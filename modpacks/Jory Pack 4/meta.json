@@ -1,0 +1,7 @@
+{
+    "id":"Jory Pack 4",
+    "name":"Jory Pack 4",
+    "desc":"This is the 4th iteration of the Jory Pack updated to 1.20.6, focusing on vanilla + shaders with high performance.",
+    "loader":"fabric",
+    "version":"1.20.6"
+}
