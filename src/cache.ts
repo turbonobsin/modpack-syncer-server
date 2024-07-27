@@ -1,14 +1,26 @@
+import path from "path";
 import { errors, Result } from "./errors";
-import { util_lstat, util_readdir, util_readJSON } from "./util";
+import { util_lstat, util_mkdir, util_readdir, util_readJSON, util_warn, util_writeJSON } from "./util";
 
 class ModpackCacheItem{
     constructor(id:string,meta:PackMetaData){
         this.id = id;
-        this.meta = meta;
+        this.meta_og = meta;
+
+        if(!this.meta_og._resourcepacks) this.meta_og._resourcepacks = [];
+
+        let newMeta = {} as any;
+        let ok = Object.keys(meta);
+        for(const key of ok){
+            if(key.startsWith("_")) continue;
+            newMeta[key] = (meta as any)[key];
+        }
+        this.meta = newMeta;
 
         this._dirty = false;
     }
     id:string;
+    meta_og:PackMetaData;
     meta:PackMetaData;
 
     private _dirty:boolean;
@@ -17,6 +29,11 @@ class ModpackCacheItem{
     }
     makeDirty(){
         this._dirty = true;
+    }
+
+    async save(){
+        const loc = path.join("..","modpacks",this.id,"meta.json");
+        await util_writeJSON(loc,this.meta_og);
     }
 }
 
@@ -44,22 +61,28 @@ class ModpackCache{
     }
 
     async getFromHD(id:string):Promise<Result<ModpackCacheItem>>{
-        const path = "../modpacks/"+id;
+        const loc = "../modpacks/"+id;
 
         if(!id){
             return errors.couldNotFindPack;
         }
 
-        if(!await util_lstat(path)){
+        if(!await util_lstat(loc)){
             return errors.couldNotFindPack;
         }
 
-        let meta = await util_readJSON<PackMetaData>(path+"/meta.json");
+        let meta = await util_readJSON<PackMetaData>(loc+"/meta.json");
         if(!meta){
             return errors.failedToReadPack;
         }
 
-        console.log(".. fetched pack from HD");
+        // 
+        let cacheLoc = path.join("..","modpacks",id,"cache");
+        await util_mkdir(cacheLoc);
+        await util_mkdir(path.join(cacheLoc,"rp"));
+        // 
+
+        // console.log(".. fetched pack from HD");
         let cacheItem = modpackCache.add(id,meta);
 
         return new Result(cacheItem);
@@ -69,7 +92,7 @@ class ModpackCache{
         if(!item || (item ? item.isDirty() : !item)){
             return await this.getFromHD(id);
         }
-        console.log(".. got from cache");
+        // console.log(".. got from cache");
         return new Result(item);
     }
     async getLike(id?:string){
@@ -110,7 +133,7 @@ class ModpackCache{
 
             if(matches) similar.push(k);
         }
-        console.log("similar",similar,query);
+        // console.log("similar",similar,query);
         return similar;
     }
 }

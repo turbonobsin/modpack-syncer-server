@@ -27,7 +27,7 @@ export class Result<T>{
     }
     unwrapPanick(){
         let data = this.unwrap();
-        if(data == null || !data || data == undefined){
+        if(data == null || data == undefined){
             util_warn("Data was undefined");
             return;
         }
@@ -40,4 +40,14 @@ export const errors = {
     invalid_args: Result.err("Invalid arguments"),
     couldNotFindPack: Result.err("Couldn't find pack"),
     failedToReadPack: Result.err("Failed to read pack meta"),
+
+    noAuthSet: Result.err("The modpack owner has not setup any remote auth yet"),
+    noAuthFound: Result.err("Did not find any auth data for your account on this modpack"),
+    denyAuth: Result.err("You don't have permission to do this"),
+
+    rpAlreadyExists: Result.err("A resource pack with that name has already been uploaded"),
+    couldNotFindRP: Result.err("Could not find resource pack"),
+
+    fileDNE: Result.err("File does not exist"),
+    failedToReadStats: Result.err("Failed to read stats of file"),
 };

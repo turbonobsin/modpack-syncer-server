@@ -45,6 +45,13 @@ export function util_readJSON<T>(path:fs.PathOrFileDescriptor){
         });
     });
 }
+export function util_readBinary(path:fs.PathOrFileDescriptor){
+    return new Promise<Buffer>(resolve=>{
+        fs.readFile(path,(err,data)=>{
+            resolve(data);
+        });
+    });
+}
 export function util_writeJSON(path:fs.PathOrFileDescriptor,data:any){
     return new Promise<void>(resolve=>{
         fs.writeFile(path,JSON.stringify(data,undefined,4),{encoding:"utf8"},()=>{
@@ -52,23 +59,80 @@ export function util_writeJSON(path:fs.PathOrFileDescriptor,data:any){
         });
     });
 }
+export function util_writeBinary(path:fs.PathOrFileDescriptor,data:Buffer){
+    return new Promise<boolean>(resolve=>{
+        fs.writeFile(path,data,(err)=>{
+            if(err){
+                console.log("Failed to write: ",path,err);
+                resolve(false);
+            }
+            resolve(true);
+        });
+    });
+}
 export function util_lstat(path:fs.PathLike){
     return new Promise<fs.Stats|undefined>(resolve=>{
         fs.lstat(path,(err,stats)=>{
             if(err){
-                console.log("Err: ",err);
+                // console.log("Err: ",err);
                 resolve(undefined);
             }
             else resolve(stats);
         });
     });
 }
-export function util_mkdir(path:fs.PathLike){
-    return new Promise<void>(resolve=>{
-        fs.mkdir(path,()=>{
-            resolve();
+export function util_mkdir(path:fs.PathLike,recursive=false){
+    return new Promise<boolean>(resolve=>{
+        fs.mkdir(path,{
+            recursive
+        },err=>{
+            if(err) resolve(false);
+            else resolve(true);
         });
     });
+}
+export function util_utimes(path:string,ops:{
+    mtime:number,
+    btime:number,
+    atime:number
+}){
+
+    if(ops.atime == undefined) ops.atime = 0;
+
+    if(ops.mtime) ops.mtime = Math.floor(ops.mtime);
+    if(ops.atime) ops.atime = Math.floor(ops.atime);
+    if(ops.btime) ops.btime = Math.floor(ops.btime);
+
+    // console.log("UTIME:",ops,path);
+
+    // console.log("m time:",new Date(ops.mtime).toLocaleString());
+    // console.log("b time:",new Date(ops.btime).toLocaleString());
+
+    return new Promise<boolean>(resolve=>{
+        fs.utimes(path,ops.atime/1000,ops.mtime/1000,err=>{
+            if(err){
+                util_warn("Error occured while changing timestamps:");
+                console.log(err);
+                resolve(false);
+            }
+            else resolve(true);
+        });
+    });
+
+    // return new Promise<boolean>(resolve=>{
+    //     utimes(path,{
+    //         atime:ops.atime,
+    //         btime:ops.btime,
+    //         mtime:ops.mtime
+    //     },err=>{
+    //         if(err){
+    //             util_warn("Error occured while changing timestamps:");
+    //             console.log(err);
+    //             resolve(false);
+    //         }
+    //         else resolve(true);
+    //     });
+    // });
 }
 
 // 
