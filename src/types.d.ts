@@ -11,7 +11,36 @@ interface PackMetaData{
         users:UserAuth[];
     };
     _resourcepacks:RPMeta[];
+    _worlds:SWorldMeta[];
 }
+interface SWorldMeta{
+    wID:string;
+    icon:string;
+    ownerUID:string;
+    ownerName:string;
+    _perm:{
+        users:{
+            uname?:string;
+            uid?:string;
+            upload?:boolean;
+        }[]
+    }
+}
+interface WorldMeta{
+    wID:string;
+    icon:string;
+    ownerUID:string;
+    ownerName:string;
+}
+interface Arg_GetWorldMeta{
+    mpID:string;
+    wID:string;
+}
+interface Res_GetWorldMeta{
+    isPublished:boolean;
+    data?:WorldMeta;
+}
+// 
 
 interface PackMetaData_Client extends PackMetaData{
     resourcepacks:{

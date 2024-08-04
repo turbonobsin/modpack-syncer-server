@@ -38,8 +38,8 @@ export class Result<T>{
 export const errors = {
     unknown: Result.err("Unknown error"),
     invalid_args: Result.err("Invalid arguments"),
-    couldNotFindPack: Result.err("Couldn't find pack"),
-    failedToReadPack: Result.err("Failed to read pack meta"),
+    couldNotFindPack: Result.err("Couldn't find mod pack"),
+    failedToReadPack: Result.err("Failed to read mod pack meta"),
 
     noAuthSet: Result.err("The modpack owner has not setup any remote auth yet"),
     noAuthFound: Result.err("Did not find any auth data for your account on this modpack"),

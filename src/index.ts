@@ -60,6 +60,46 @@ io.on("connection",socket=>{
         }));
     });
 
+    onEv<Arg_GetWorldMeta,Res_GetWorldMeta>(socket,"getWorldMeta",async (arg,call)=>{
+        if(!arg){
+            call(errors.invalid_args);
+            return;
+        }
+        if(!arg.mpID){
+            call(errors.invalid_args);
+            return;
+        }
+        if(!arg.wID){
+            call(errors.invalid_args);
+            return;
+        }
+        
+        let cache = (await modpackCache.get(arg.mpID)).unwrap(call);
+        if(!cache){
+            call(errors.couldNotFindPack);
+            return;
+        }
+
+        let w = cache.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w){
+            call(new Result({
+                isPublished:false
+            }));
+            return;
+        }
+        let wMeta:WorldMeta = {
+            wID:w.wID,
+            icon:w.icon,
+            ownerUID:w.ownerUID,
+            ownerName:w.ownerName
+        };
+
+        call(new Result({
+            isPublished:true,
+            data:wMeta
+        }));
+    });
+
     // sync
     onEv<{id:string,update:number},boolean>(socket,"checkModUpdates",async (arg,call)=>{
         if(arg.update == undefined) arg.update = 0;

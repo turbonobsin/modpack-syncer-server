@@ -8,6 +8,7 @@ class ModpackCacheItem{
         this.meta_og = meta;
 
         if(!this.meta_og._resourcepacks) this.meta_og._resourcepacks = [];
+        if(!this.meta_og._worlds) this.meta_og._worlds = [];
 
         let newMeta = {} as any;
         let ok = Object.keys(meta);
