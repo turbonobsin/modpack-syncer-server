@@ -18,6 +18,11 @@ interface SWorldMeta{
     icon:string;
     ownerUID:string;
     ownerName:string;
+    update:number;
+    updateTime:number;
+    publisherUID:string;
+    publisherName:string;
+    allowedDirs:string[];
     _perm:{
         users:{
             uname?:string;
@@ -27,7 +32,6 @@ interface SWorldMeta{
     }
 }
 interface WorldMeta{
-    wID:string;
     icon:string;
     ownerUID:string;
     ownerName:string;
@@ -38,7 +42,55 @@ interface Arg_GetWorldMeta{
 }
 interface Res_GetWorldMeta{
     isPublished:boolean;
+    wID:string;
     data?:WorldMeta;
+}
+interface Arg_PublishWorld{
+    iid:string;
+    wID:string;
+    ownerUID:string;
+    ownerName:string;
+}
+interface SArg_PublishWorld{ // server arg
+    mpID:string;
+    wID:string;
+    allowedDirs:string[];
+    ownerUID:string;
+    ownerName:string;
+}
+interface Arg_UnpublishWorld{
+    mpID:string;
+    wID:string;
+    uid:string;
+}
+interface Arg_UploadWorldFile{
+    path:string;
+    mpID:string;
+    wID:string;
+    uid:string;
+    uname:string;
+    buf:Uint8Array;
+}
+interface Arg_DownloadWorldFile{
+    path:string;
+    mpID:string;
+    wID:string;
+}
+interface Arg_GetAllowedDirs{
+    mpID:string;
+    wID:string;
+}
+interface Arg_GetWorldFiles{
+    mpID:string;
+    wID:string;
+}
+interface Res_GetWorldFiles{
+    files:WorldFile[];
+}
+interface WorldFile{
+    n:string;
+    loc:string;
+    sloc:string;
 }
 // 
 
@@ -67,6 +119,7 @@ interface RPUserAuth extends Base_UserAuth{
 
 interface UserAuth extends Base_UserAuth{
     uploadRP?:boolean;
+    uploadWorld?:boolean;
 }
 
 type Arg_SearchPacks = {

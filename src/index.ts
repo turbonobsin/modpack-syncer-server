@@ -18,14 +18,22 @@ app.get("/",(req,res)=>{
 
 type CB<T> = (err:Result<T>)=>void;
 
-function onEv<T,V>(socket:Socket,ev:string,f:(arg:T,call:CB<V>)=>void){
+// function onEv<T,V>(socket:Socket,ev:string,f:(arg:T,call:CB<V>)=>void|Promise<void>){
+function onEv<T,V>(socket:Socket,ev:string,f:(arg:T,call:CB<V>)=>Promise<Result<V>>){
     socket.on(ev,async (arg:T,call:CB<V>)=>{
         if(!call) return;
         if(!arg){
             call(errors.invalid_args);
             return;
         }
-        f(arg,call);
+        let alreadyCalled = false;
+        let res = await f(arg,(err:Result<V>)=>{
+            alreadyCalled = true;
+            call(err);
+        });
+        if(alreadyCalled) return;
+        if(!res) call(errors.unknown);
+        else call(res);
     });
 }
 
@@ -46,74 +54,59 @@ io.on("connection",socket=>{
         call(new Result(cache.meta));
     });
 
-    onEv<Arg_SearchPacks,Res_SearchPacks>(socket,"searchPacks",(arg,call)=>{
+    onEv<Arg_SearchPacks,Res_SearchPacks>(socket,"searchPacks",async (arg)=>{
         let res = modpackCache.findLike(arg.query);
         
-        call(new Result({
+        return new Result({
             similar:res
-        }));
+        });
     });
-    onEv<Arg_SearchPacks,Res_SearchPacksMeta>(socket,"searchPacksMeta",async (arg,call)=>{
+    onEv<Arg_SearchPacks,Res_SearchPacksMeta>(socket,"searchPacksMeta",async (arg)=>{
         let res = await modpackCache.getLike(arg.query);
-        call(new Result({
+        return new Result({
             similar:res.map(v=>v.meta)
-        }));
+        });
     });
 
-    onEv<Arg_GetWorldMeta,Res_GetWorldMeta>(socket,"getWorldMeta",async (arg,call)=>{
-        if(!arg){
-            call(errors.invalid_args);
-            return;
-        }
-        if(!arg.mpID){
-            call(errors.invalid_args);
-            return;
-        }
-        if(!arg.wID){
-            call(errors.invalid_args);
-            return;
-        }
+    onEv<Arg_GetWorldMeta,Res_GetWorldMeta>(socket,"getWorldMeta",async (arg)=>{
+        if(!arg) return errors.invalid_args;
+        if(!arg.mpID) return errors.invalid_args;
+        if(!arg.wID) return errors.invalid_args;
         
-        let cache = (await modpackCache.get(arg.mpID)).unwrap(call);
-        if(!cache){
-            call(errors.couldNotFindPack);
-            return;
-        }
+        let cacheRes = await modpackCache.get(arg.mpID);
+        if(cacheRes.err) return cacheRes;
+        let cache = cacheRes.unwrap();
+        if(!cache) return errors.couldNotFindPack;
 
         let w = cache.meta_og._worlds.find(v=>v.wID == arg.wID);
-        if(!w){
-            call(new Result({
-                isPublished:false
-            }));
-            return;
-        }
+        if(!w) return new Result({
+            isPublished:false,
+            wID:arg.wID,
+        });
         let wMeta:WorldMeta = {
-            wID:w.wID,
             icon:w.icon,
             ownerUID:w.ownerUID,
             ownerName:w.ownerName
         };
 
-        call(new Result({
+        return new Result({
             isPublished:true,
+            wID:arg.wID,
             data:wMeta
-        }));
+        });
     });
 
     // sync
-    onEv<{id:string,update:number},boolean>(socket,"checkModUpdates",async (arg,call)=>{
+    onEv<{id:string,update:number},boolean>(socket,"checkModUpdates",async (arg)=>{
         if(arg.update == undefined) arg.update = 0;
 
         let pack = (await modpackCache.get(arg.id)).unwrap();
-        if(!pack){
-            call(errors.couldNotFindPack);
-            return;
-        }
+        if(!pack) return errors.couldNotFindPack;
 
-        if(pack.meta.update > arg.update) call(new Result(true));
-        else call(new Result(false));
+        if(pack.meta.update > arg.update) return new Result(true);
+        return new Result(false);
     });
-    onEv<Arg_GetModUpdates,Res_GetModUpdates>(socket,"getModUpdates",async (arg,call)=>{
+    onEv<Arg_GetModUpdates,Res_GetModUpdates>(socket,"getModUpdates",async (arg)=>{
         let currentMods:string[] = [];
         let currentIndexes:string[] = [];
 
@@ -156,31 +149,19 @@ io.on("connection",socket=>{
             if(!currentIndexes.includes(index)) data.indexes.remove.push(index);
         }
 
-        call(new Result(data));
+        return new Result(data);
     });
 
     // resource packs
     onEv<Arg_UploadRP,Res_UploadRP>(socket,"uploadRP",async (arg,call)=>{
         let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
-        if(!d){
-            call(errors.invalid_args);
-            return;
-        }
-        if(!d.mp){
-            call(errors.invalid_args);
-            return;
-        }
-        if(!d.userAuth){
-            call(errors.invalid_args);
-            return;
-        }
+        if(!d) return errors.invalid_args;
+        if(!d.mp) return errors.invalid_args;
+        if(!d.userAuth) return errors.invalid_args;
 
         let {userAuth,mp} = d;
         
-        if(!userAuth.uploadRP){
-            call(errors.denyAuth);
-            return;
-        }
+        if(!userAuth.uploadRP) return errors.denyAuth;
 
         let existingRP = d.mp.meta_og._resourcepacks.find(v=>v.rpID == arg.name);
         if(existingRP){
@@ -193,10 +174,7 @@ io.on("connection",socket=>{
                 }
             }
             
-            if(!ableToUpload){
-                call(errors.rpAlreadyExists);
-                return;
-            }
+            if(!ableToUpload) return errors.rpAlreadyExists;
         }
 
         // create meta
@@ -221,58 +199,43 @@ io.on("connection",socket=>{
         // if(!await util_lstat(cachePath)) 
         
         // we're all good to start requesting upload now
-        if(!await util_lstat(path.join("..","modpacks",arg.mpID,"resourcepacks",arg.name))) call(new Result({
+        if(!await util_lstat(path.join("..","modpacks",arg.mpID,"resourcepacks",arg.name))) return new Result({
             res:2,
             update:cacheMeta.update
-        }));
-        else call(new Result({
+        });
+        return new Result({
             res:1,
             update:cacheMeta.update
-        }));
+        });
     });
 
     onEv<Arg_UploadRPFile,boolean>(socket,"upload_rp_file",async (arg,call)=>{
-        if(arg.path.includes("..")){
-            call(errors.invalid_args);
-            return;
-        }
+        if(arg.path.includes("..") || arg.mpID.includes("..") || arg.rpName.includes("..")) return errors.invalid_args;
 
         // AUTH CHECK
-        if(!arg.uid || !arg.uname){
-            call(new Result(false));
-            return;
-        }
+        if(!arg.uid || !arg.uname) return new Result(false);
         let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
-        if(!d){
-            call(new Result(false));
-            return;
-        }
+        if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP){
-            call(errors.denyAuth);
-            return;
-        }
+        if(!userAuth.uploadRP) return errors.denyAuth;
         // 
 
         arg.path = arg.path.substring(1);
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpName,arg.path);
 
         let res = await util_mkdir(path.dirname(loc),true);
-        if(!res) call(new Result(false));
+        if(!res) return new Result(false);
         
         res = await util_writeBinary(loc,Buffer.from(arg.buf));
         let stat = await util_lstat(loc);
         // if(stat) console.log("STAT: ",arg.path,new Date(stat.mtimeMs),new Date(stat.birthtimeMs),new Date(arg.mt),new Date(arg.bt));
         let utimes_res = await util_utimes(loc,{ atime:arg.at, mtime:arg.mt, btime:arg.bt });
 
-        call(new Result(res));
+        return new Result(res);
     });
-    onEv<Arg_DownloadRPFile,ModifiedFileData>(socket,"download_rp_file",async (arg,call)=>{
-        if(arg.path.includes("..") || arg.mpID.includes("..") || arg.rpName.includes("..")){
-            call(errors.invalid_args);
-            return;
-        }
+    onEv<Arg_DownloadRPFile,ModifiedFileData>(socket,"download_rp_file",async (arg)=>{
+        if(arg.path.includes("..") || arg.mpID.includes("..") || arg.rpName.includes("..")) return errors.invalid_args;
 
         if(arg.path[0] == "/") arg.path = arg.path.substring(1);
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpName,arg.path);
@@ -280,29 +243,24 @@ io.on("connection",socket=>{
         let buf = await util_readBinary(loc);
         if(!buf){
             util_warn("ERR: could not read file: "+loc);
-            call(errors.fileDNE);
-            return;
+            return errors.fileDNE;
         }
 
         let stats = await util_lstat(loc);
         if(!stats){
-            call(errors.failedToReadStats);
-            return;
+            return errors.failedToReadStats;
         }
 
-        call(new Result({
+        return new Result({
             at:stats.atimeMs,
             mt:stats.mtimeMs,
             buf
-        }));
+        });
     });
 
-    onEv<Arg_DownloadRP,Res_DownloadRP>(socket,"downloadRP",async (arg,call)=>{
+    onEv<Arg_DownloadRP,Res_DownloadRP>(socket,"downloadRP",async (arg)=>{
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpID);
-        if(!await util_lstat(loc)){
-            call(errors.couldNotFindRP);
-            return;
-        }
+        if(!await util_lstat(loc)) return errors.couldNotFindRP;
 
         // 
         let root = new FFolder("root");
@@ -359,29 +317,21 @@ io.on("connection",socket=>{
         // for(const v of removeFiles) v.l = path.relative(loc,v.l);
 
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
-        if(!inst){
-            call(errors.couldNotFindPack);
-            return;
-        }
-        let cacheMeta = inst.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
-        if(!cacheMeta){
-            call(errors.couldNotFindRP);
-            return;
-        }
+        if(!inst) return errors.couldNotFindPack;
 
-        call(new Result({
+        let cacheMeta = inst.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
+        if(!cacheMeta) return errors.couldNotFindRP;
+
+        return new Result({
             add:addFiles,
             remove:removeFiles,
             update:cacheMeta.update
-        }));
+        });
     });
 
-    onEv<Arg_GetRPs,Res_GetRPs>(socket,"getRPs",async (arg,call)=>{
+    onEv<Arg_GetRPs,Res_GetRPs>(socket,"getRPs",async (arg)=>{
         let mp = (await modpackCache.get(arg.mpID)).unwrap();
-        if(!mp){
-            call(errors.couldNotFindPack);
-            return;
-        }
+        if(!mp) return errors.couldNotFindPack;
 
         let data:Res_GetRPs = {
             list:[]
@@ -412,15 +362,12 @@ io.on("connection",socket=>{
             }
         }
 
-        call(new Result(data));
+        return new Result(data);
     });
 
     onEv<Arg_GetRPVersions,Res_GetRPVersions>(socket,"getRPVersions",async (arg,call)=>{
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
-        if(!inst){
-            call(errors.couldNotFindPack);
-            return;
-        }
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
+        if(!inst) return errors.couldNotFindPack;
 
         let res:Res_GetRPVersions = {
             versions:[]
@@ -438,7 +385,152 @@ io.on("connection",socket=>{
             });
         }
 
-        call(new Result(res));
+        return new Result(res);
+    });
+
+    // Worlds
+    onEv<Arg_GetAllowedDirs,boolean>(socket,"getAllowedDirs",async (arg)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE;
+
+        return new Result(w.allowedDirs);
+    });
+    onEv<SArg_PublishWorld,boolean>(socket,"publishWorld",async (arg,call)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.ownerUID || !arg.ownerName) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.ownerUID,arg.ownerName,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
+        // 
+
+        if(inst.meta_og._worlds.some(v=>v.wID == arg.wID)) return errors.alreadyPublishedWorld;
+        let w:SWorldMeta = {
+            wID:arg.wID,
+            ownerUID:arg.ownerUID,
+            ownerName:arg.ownerName,
+            icon:"icon.png",
+            _perm:{
+                users:[]
+            },
+            update:0,
+            updateTime:Date.now(),
+            publisherUID:arg.ownerUID,
+            publisherName:arg.ownerName,
+            allowedDirs:arg.allowedDirs
+        };
+
+        inst.meta_og._worlds.push(w);
+        await inst.save();
+
+        return new Result(true);
+    });
+    onEv<Arg_UnpublishWorld,boolean>(socket,"unpublishWorld",async (arg)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE;
+
+        if(w.publisherUID != arg.uid) return errors.denyAuth;
+
+        let ind = inst.meta_og._worlds.findIndex(v=>v.wID == arg.wID);
+        if(ind != -1){
+            inst.meta_og._worlds.splice(ind,1);
+            await inst.save();
+        }
+
+        return new Result(true);
+    });
+    onEv<Arg_UploadWorldFile,boolean>(socket,"upload_world_file",async (arg,call)=>{        
+        if(arg.path.includes("..") || arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        // AUTH CHECK
+        if(!arg.uid || !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadRP) return errors.denyAuth;
+        // 
+
+        let loc = path.join("..","modpacks",arg.mpID,"saves",arg.wID,arg.path);
+
+        let res = await util_mkdir(path.dirname(loc),true);
+        if(!res) return new Result(false);
+        
+        res = await util_writeBinary(loc,Buffer.from(arg.buf));
+        // let stat = await util_lstat(loc);
+        // if(stat) console.log("STAT: ",arg.path,new Date(stat.mtimeMs),new Date(stat.birthtimeMs),new Date(arg.mt),new Date(arg.bt));
+        // let utimes_res = await util_utimes(loc,{ atime:arg.at, mtime:arg.mt, btime:arg.bt });
+
+        return new Result(res);
+    });
+    onEv<Arg_DownloadWorldFile,ModifiedFileData>(socket,"download_world_file",async (arg)=>{
+        if(arg.path.includes("..") || arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        if(arg.path[0] == "/") arg.path = arg.path.substring(1);
+        let loc = path.join("..","modpacks",arg.mpID,"saves",arg.wID,arg.path);
+
+        let buf = await util_readBinary(loc);
+        if(!buf){
+            util_warn("ERR: could not read file: "+loc);
+            return errors.fileDNE;
+        }
+
+        let stats = await util_lstat(loc); // might depricate stats?
+        if(!stats){
+            return errors.failedToReadStats;
+        }
+
+        return new Result({
+            at:stats.atimeMs,
+            mt:stats.mtimeMs,
+            buf
+        });
+    });
+    onEv<Arg_GetWorldFiles,Res_GetWorldFiles>(socket,"getWorldFiles",async (arg)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE;
+        // 
+
+        let saveLoc = path.join("..","modpacks",arg.mpID,"saves",arg.wID);
+        if(!await util_lstat(saveLoc)) return errors.worldDNE;
+        
+        let res:Res_GetWorldFiles = {
+            files:[]
+        };
+    
+        let rootList = await util_readdir(saveLoc);
+        let loop = async (loc:string,sloc:string)=>{
+            let list = await util_readdirWithTypes(loc);
+            for(const item of list){
+                if(item.isDirectory()){
+                    await loop(path.join(loc,item.name),path.join(sloc,item.name));
+                    continue;
+                }
+                res.files.push({
+                    loc:path.join(loc,item.name),
+                    sloc:path.join(sloc,item.name),
+                    n:item.name
+                });
+            }
+        };
+        for(const f of rootList){
+            if(!w.allowedDirs.includes(f)) continue; // THIS IS DISABLED FOR THE FIRST PUBLISH AND FIRST DOWNLOAD
+            await loop(path.join(saveLoc,f),f);
+        }
+
+        return new Result(res);
     });
 
     // 

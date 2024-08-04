@@ -50,4 +50,8 @@ export const errors = {
 
     fileDNE: Result.err("File does not exist"),
     failedToReadStats: Result.err("Failed to read stats of file"),
+
+    // worlds
+    alreadyPublishedWorld: Result.err("This world has already been published"),
+    worldDNE: Result.err("Couldn't find world"),
 };
