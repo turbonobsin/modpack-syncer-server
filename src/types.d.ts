@@ -23,6 +23,8 @@ interface SWorldMeta{
     publisherUID:string;
     publisherName:string;
     allowedDirs:string[];
+    lastSync:number;
+    state:WorldState;
     _perm:{
         users:{
             uname?:string;
@@ -31,10 +33,13 @@ interface SWorldMeta{
         }[]
     }
 }
+type WorldState = "" | "inUse";
 interface WorldMeta{
     icon:string;
     ownerUID:string;
     ownerName:string;
+    update:number;
+    publisherName:string;
 }
 interface Arg_GetWorldMeta{
     mpID:string;
@@ -44,6 +49,7 @@ interface Res_GetWorldMeta{
     isPublished:boolean;
     wID:string;
     data?:WorldMeta;
+    state:WorldState;
 }
 interface Arg_PublishWorld{
     iid:string;
@@ -79,18 +85,57 @@ interface Arg_DownloadWorldFile{
 interface Arg_GetAllowedDirs{
     mpID:string;
     wID:string;
+    uid:string;
 }
 interface Arg_GetWorldFiles{
     mpID:string;
     wID:string;
+    useTime:boolean;
+    syncTime:number;
+    update:number;
+    uid:string;
+    forceAllFiles?:boolean;
 }
 interface Res_GetWorldFiles{
     files:WorldFile[];
+    update:number;
 }
 interface WorldFile{
     n:string;
     loc:string;
     sloc:string;
+}
+interface Arg_FinishUploadWorld{
+    mpID:string;
+    wID:string;
+    uid:string;
+    uname:string;
+}
+interface Res_FinishUploadWorld{
+    update:number;
+}
+interface Arg_GetServerWorlds{
+    iid:string;
+}
+interface SArg_GetServerWorlds{
+    mpID:string;
+    existing:string[];
+}
+interface Res_GetServerWorlds{
+    list:ServerWorld[];
+}
+interface ServerWorld{
+    wID:string;
+    icon:string;
+    publisherName:string;
+    ownerName:string;
+    update:number;
+}
+interface Arg_TakeWorldOwnership{
+    mpID:string;
+    wID:string;
+    uid:string;
+    uname:string;
 }
 // 
 

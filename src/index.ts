@@ -86,13 +86,16 @@ io.on("connection",socket=>{
         let wMeta:WorldMeta = {
             icon:w.icon,
             ownerUID:w.ownerUID,
-            ownerName:w.ownerName
+            ownerName:w.ownerName,
+            update:w.update,
+            publisherName:w.publisherName
         };
 
         return new Result({
             isPublished:true,
             wID:arg.wID,
-            data:wMeta
+            data:wMeta,
+            state:w.state
         });
     });
 
@@ -395,6 +398,9 @@ io.on("connection",socket=>{
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE;
+        if(w.ownerUID != arg.uid){
+            return errors.denyWorldUpload;
+        }
 
         return new Result(w.allowedDirs);
     });
@@ -420,10 +426,12 @@ io.on("connection",socket=>{
                 users:[]
             },
             update:0,
+            lastSync:-1,
             updateTime:Date.now(),
             publisherUID:arg.ownerUID,
             publisherName:arg.ownerName,
-            allowedDirs:arg.allowedDirs
+            allowedDirs:arg.allowedDirs,
+            state:""
         };
 
         inst.meta_og._worlds.push(w);
@@ -472,6 +480,35 @@ io.on("connection",socket=>{
 
         return new Result(res);
     });
+    onEv<Arg_FinishUploadWorld,Res_FinishUploadWorld>(socket,"finishUploadWorld",async (arg,call)=>{
+        if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid || !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadRP) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE.unwrap();
+        if(w.ownerUID != arg.uid){
+            return errors.denyWorldUpload;
+        }
+
+        w.update++;
+        w.lastSync = Date.now();
+        await inst.save();
+
+        return new Result({
+            update:w.update
+        });
+    });
     onEv<Arg_DownloadWorldFile,ModifiedFileData>(socket,"download_world_file",async (arg)=>{
         if(arg.path.includes("..") || arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
@@ -499,15 +536,22 @@ io.on("connection",socket=>{
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
 
+        // if(arg.forceAllFiles) arg.useTime = false; // might not need this
+
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE;
         // 
+
+        if(w.ownerUID != arg.uid){
+            return errors.denyWorldDownload;
+        }
 
         let saveLoc = path.join("..","modpacks",arg.mpID,"saves",arg.wID);
         if(!await util_lstat(saveLoc)) return errors.worldDNE;
         
         let res:Res_GetWorldFiles = {
-            files:[]
+            files:[],
+            update:w.update
         };
     
         let rootList = await util_readdir(saveLoc);
@@ -518,6 +562,14 @@ io.on("connection",socket=>{
                     await loop(path.join(loc,item.name),path.join(sloc,item.name));
                     continue;
                 }
+                if(arg.useTime){
+                    let stat = await util_lstat(path.join(loc,item.name));
+                    if(!stat){
+                        util_warn("This error should never happen, failed to open stats after just detecting it was there: "+loc+" "+item.name);
+                        continue;
+                    }
+                    if(Math.max(stat.mtimeMs,stat.birthtimeMs) <= arg.syncTime) continue; // skip
+                }
                 res.files.push({
                     loc:path.join(loc,item.name),
                     sloc:path.join(sloc,item.name),
@@ -525,12 +577,80 @@ io.on("connection",socket=>{
                 });
             }
         };
-        for(const f of rootList){
+        if(arg.forceAllFiles){
+            await loop(saveLoc,"");
+        }
+        else for(const f of rootList){
             if(!w.allowedDirs.includes(f)) continue; // THIS IS DISABLED FOR THE FIRST PUBLISH AND FIRST DOWNLOAD
             await loop(path.join(saveLoc,f),f);
         }
+        
+        return new Result(res);
+    });
+    onEv<SArg_GetServerWorlds,Res_GetServerWorlds>(socket,"getServerWorlds",async (arg,call)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // // AUTH CHECK
+        // if(!arg.uid || !arg.uname) return new Result(false);
+        // let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        // if(!d) return new Result(false);
+        // let {userAuth} = d;
+        
+        // if(!userAuth.uploadRP) return errors.denyAuth;
+        // // 
+        
+        let res:Res_GetServerWorlds = {
+            list:[]
+        };
+
+        for(const w of inst.meta_og._worlds){
+            if(arg.existing.includes(w.wID)) continue;
+            res.list.push({
+                wID:w.wID,
+                icon:w.icon,
+                ownerName:w.ownerName,
+                publisherName:w.publisherName,
+                update:w.update
+            });
+        }
 
         return new Result(res);
+    });
+    onEv<Arg_TakeWorldOwnership,boolean>(socket,"takeWorldOwnership",async (arg,call)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,undefined,call); // only verify by uid
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadWorld) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE;
+
+        if(w.ownerUID == arg.uid) return errors.alreadyOwnerOfWorld;
+
+        let perm = w._perm.users.find(v=>v.uid == arg.uid);
+        if(!perm) return errors.noAuthFound;
+
+        if(!perm.upload) return errors.denyAuth;
+        // 
+
+        w.ownerUID = arg.uid;
+        w.ownerName = arg.uname;
+        await inst.save();
+
+        io.emit("updateSearch",{
+            mpID:arg.mpID,
+            id:"world"
+        });
+
+        return new Result(true);
     });
 
     // 
@@ -541,18 +661,18 @@ io.on("connection",socket=>{
 
 const port = 3001;
 
-async function getUserAuth(mpID:string,uid:string,uname:string,call:(data:any)=>void){
+async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)=>void){
     let mp = (await modpackCache.get(mpID)).unwrap();
     if(!mp) return;
 
     if(!mp.meta_og._perm?.users){
-        call(errors.noAuthSet);
+        if(call) call(errors.noAuthSet);
         return;
     }
 
     let userAuth = mp.meta_og._perm.users.find(v=>v.uid == uid || v.uname == uname);
     if(!userAuth){
-        call(errors.noAuthFound);
+        if(call) call(errors.noAuthFound);
         return;
     }
 
@@ -608,7 +728,28 @@ app.get("/rp_image",(req,res)=>{
         return;
     }
 
+    if(mpID.includes("..") || rpID.includes("..")){
+        res.sendStatus(400);
+        return;
+    }
+
     res.sendFile(path.join(__dirname,"..","modpacks",mpID,"resourcepacks",rpID,"pack.png"));
+});
+app.get("/world_image",(req,res)=>{
+    let mpID = req.query.mpID?.toString();
+    let wID = req.query.wID?.toString();
+
+    if(!mpID || !wID){
+        res.sendStatus(400);
+        return;
+    }
+
+    if(mpID.includes("..") || wID.includes("..")){
+        res.sendStatus(400);
+        return;
+    }
+
+    res.sendFile(path.join(__dirname,"..","modpacks",mpID,"saves",wID,"icon.png"));
 });
 
 server.listen(port,()=>{
