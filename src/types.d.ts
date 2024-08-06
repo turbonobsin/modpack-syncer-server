@@ -33,7 +33,7 @@ interface SWorldMeta{
         }[]
     }
 }
-type WorldState = "" | "inUse";
+type WorldState = "" | "inUse" | "uploading" | "downloading";
 interface WorldMeta{
     icon:string;
     ownerUID:string;
@@ -130,6 +130,12 @@ interface ServerWorld{
     publisherName:string;
     ownerName:string;
     update:number;
+}
+interface Arg_SetWorldState{
+    mpID:string;
+    wID:string;
+    uid:string;
+    state:WorldState;
 }
 interface Arg_TakeWorldOwnership{
     mpID:string;

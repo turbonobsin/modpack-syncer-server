@@ -57,4 +57,5 @@ export const errors = {
     denyWorldDownload: Result.err("You can't download unless you have ownership"),
     denyWorldUpload: Result.err("You can't upload unless you have ownership"),
     alreadyOwnerOfWorld: Result.err("You're already the owner of this world"),
+    denyChangeWorldState: Result.err("You can only change the state of a world if you are the owner"),
 };

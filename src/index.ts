@@ -617,6 +617,43 @@ io.on("connection",socket=>{
 
         return new Result(res);
     });
+    onEv<Arg_SetWorldState,boolean>(socket,"setWorldState",async (arg,call)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,undefined,call); // only verify by uid
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadWorld) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE;
+
+        if(w.ownerUID != arg.uid) return errors.denyChangeWorldState;
+
+        // let perm = w._perm.users.find(v=>v.uid == arg.uid);
+        // if(!perm) return errors.noAuthFound;
+
+        // if(!perm.upload) return errors.denyAuth;
+        //////
+
+        w.state = arg.state;
+        await inst.save();
+
+        io.emit("updateSearch",{
+            mpID:arg.mpID,
+            id:"world",
+            data:{
+                wID:arg.wID
+            }
+        });
+
+        return new Result(true);
+    });
     onEv<Arg_TakeWorldOwnership,boolean>(socket,"takeWorldOwnership",async (arg,call)=>{
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
@@ -639,7 +676,7 @@ io.on("connection",socket=>{
         if(!perm) return errors.noAuthFound;
 
         if(!perm.upload) return errors.denyAuth;
-        // 
+        //////
 
         w.ownerUID = arg.uid;
         w.ownerName = arg.uname;
@@ -647,7 +684,10 @@ io.on("connection",socket=>{
 
         io.emit("updateSearch",{
             mpID:arg.mpID,
-            id:"world"
+            id:"world",
+            data:{
+                wID:arg.wID
+            }
         });
 
         return new Result(true);
