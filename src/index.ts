@@ -842,11 +842,16 @@ io.on("connection",socket=>{
         return new Result(true);
     });
     onEv<Arg_TakeWorldOwnership,boolean>(socket,"takeWorldOwnership",async (arg,call)=>{
+        console.log("TAKE WORLD OWNERSHIP:",arg);
+        
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
-        if(!arg.uid && !arg.uname) return new Result(false);
+        if(!arg.uid && !arg.uname){
+            console.log("FAILED ARG?",arg);
+            return new Result(false);
+        }
         let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call); // only verify by uid
         if(!d) return new Result(false);
         let {userAuth} = d;
@@ -859,12 +864,15 @@ io.on("connection",socket=>{
 
         // if(w.ownerUID == arg.uid || w.ownerName == arg.uname) return errors.alreadyOwnerOfWorld; // I can't have this check bc i need it to return true if it's a success
 
-        if(w.publisherUID != arg.uid){ // only need to check for auth if you aren't the publisher
-            let perm = w._perm.users.find(v=>v.uid == arg.uid || v.uname == arg.uname);
-            if(!perm) return errors.noAuthFound;
+        // if(w.publisherUID != arg.uid){ // only need to check for auth if you aren't the publisher
+        //     util_warn("-------");
+        //     console.log(w._perm,arg);
+        //     util_warn("-------");
+        //     let perm = w._perm.users.find(v=>v.uid == arg.uid || v.uname == arg.uname);
+        //     if(!perm) return errors.noAuthFound;
 
-            if(!perm.upload) return errors.denyAuth;
-        }
+        //     if(!perm.upload) return errors.denyAuth;
+        // }
         //////
 
         if(w.state != "") return errors.denyTakeWorldOwnership;
@@ -903,6 +911,7 @@ async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)
 
     let userAuth = mp.meta_og._perm.users.find(v=>v.uid == uid || v.uname == uname);
     if(!userAuth){
+        console.log("NO AUTH: ",uid,uname);
         if(call) call(errors.noAuthFound);
         return;
     }
