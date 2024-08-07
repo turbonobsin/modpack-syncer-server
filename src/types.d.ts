@@ -130,6 +130,7 @@ interface ServerWorld{
     publisherName:string;
     ownerName:string;
     update:number;
+    state:WorldState;
 }
 interface Arg_SetWorldState{
     mpID:string;

@@ -611,7 +611,8 @@ io.on("connection",socket=>{
                 icon:w.icon,
                 ownerName:w.ownerName,
                 publisherName:w.publisherName,
-                update:w.update
+                update:w.update,
+                state:w.state
             });
         }
 
@@ -659,8 +660,8 @@ io.on("connection",socket=>{
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
-        if(!arg.uid) return new Result(false);
-        let d = await getUserAuth(arg.mpID,arg.uid,undefined,call); // only verify by uid
+        if(!arg.uid && !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call); // only verify by uid
         if(!d) return new Result(false);
         let {userAuth} = d;
         
@@ -670,13 +671,15 @@ io.on("connection",socket=>{
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE;
 
-        if(w.ownerUID == arg.uid) return errors.alreadyOwnerOfWorld;
+        if(w.ownerUID == arg.uid || w.ownerName == arg.uname) return errors.alreadyOwnerOfWorld;
 
-        let perm = w._perm.users.find(v=>v.uid == arg.uid);
+        let perm = w._perm.users.find(v=>v.uid == arg.uid || v.uname == arg.uname);
         if(!perm) return errors.noAuthFound;
 
         if(!perm.upload) return errors.denyAuth;
         //////
+
+        if(w.state != "") return errors.denyTakeWorldOwnership;
 
         w.ownerUID = arg.uid;
         w.ownerName = arg.uname;
