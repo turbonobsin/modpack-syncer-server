@@ -105,6 +105,17 @@ interface WorldFile{
     loc:string;
     sloc:string;
 }
+interface Arg_GenericWorld{
+    mpID:string;
+    wID:string;
+    uid:string;
+    uname:string;
+}
+interface Arg_LaunchInst{
+    mpID:string;
+    uid:string;
+    uname:string;
+}
 interface Arg_FinishUploadWorld{
     mpID:string;
     wID:string;

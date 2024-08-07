@@ -402,6 +402,8 @@ io.on("connection",socket=>{
             return errors.denyWorldUpload;
         }
 
+        /////// this is basically the startUploadWorld event
+
         return new Result(w.allowedDirs);
     });
     onEv<SArg_PublishWorld,boolean>(socket,"publishWorld",async (arg,call)=>{
@@ -480,6 +482,164 @@ io.on("connection",socket=>{
 
         return new Result(res);
     });
+    ////////
+    onEv<Arg_LaunchInst,boolean>(socket,"startLaunchInst",async (arg,call)=>{
+        if(arg.mpID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let unownedWorlds = inst.meta_og._worlds.filter(v=>v.ownerUID != arg.uid);
+        let worlds = inst.meta_og._worlds;
+
+        if(unownedWorlds.length){
+            // you are launching an instance with worlds you don't own. Here be dragons!
+            return errors.denyLaunchFromUnownedWorlds;
+        }
+        if(worlds.some(v=>v.state != "")) return errors.notAllWorldsAreAvailable;
+
+        for(const w of worlds){
+            w.state = "inUse";
+            updateWorldSearch(arg.mpID,w.wID);
+            await inst.save();
+        }
+
+        return new Result(true);
+    });
+    onEv<Arg_LaunchInst,boolean>(socket,"finishLaunchInst",async (arg,call)=>{
+        if(arg.mpID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let worlds = inst.meta_og._worlds;
+
+        for(const w of worlds){
+            // not sure if I need to check here if w.state != "inUse" then error, because it should probably be guarenteed at this point that the state is "inUse"
+            if(w.ownerUID != arg.uid) continue; // if the case happens, you CANNOT modify worlds that you don't own
+            w.state = "";
+            updateWorldSearch(arg.mpID,w.wID);
+            await inst.save();
+        }
+
+        return new Result(true);
+    });
+    onEv<Arg_FinishUploadWorld,boolean>(socket,"forceFixBrokenWorldState",async (arg,call)=>{
+        if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid || !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadRP) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE.unwrap();
+        if(w.publisherUID != arg.uid){
+            return errors.denyPublisherAuth;
+        }
+
+        if(w.state == "") return errors.noChangeMade;
+
+        w.state = "";
+        updateWorldSearch(arg.mpID,arg.wID);
+        await inst.save();
+
+        return new Result(true);
+    });
+    onEv<Arg_FinishUploadWorld,boolean>(socket,"startUploadWorld",async (arg,call)=>{
+        if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid || !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadRP) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE.unwrap();
+        if(w.ownerUID != arg.uid){
+            return errors.denyWorldUpload;
+        }
+
+        if(w.state != "") return errors.worldIsNotAvailableState;
+
+        w.state = "uploading";
+        updateWorldSearch(arg.mpID,arg.wID);
+        await inst.save();
+
+        return new Result(true);
+    });
+    onEv<Arg_FinishUploadWorld,boolean>(socket,"startDownloadWorld",async (arg,call)=>{
+        if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid || !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadRP) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE.unwrap();
+        if(w.ownerUID != arg.uid){
+            return errors.denyWorldUpload;
+        }
+
+        if(w.state != "") return errors.worldIsNotAvailableState;
+
+        w.state = "downloading";
+        updateWorldSearch(arg.mpID,arg.wID);
+        await inst.save();
+
+        return new Result(true);
+    });
+    onEv<Arg_FinishUploadWorld,boolean>(socket,"finishDownloadWorld",async (arg,call)=>{
+        if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        // AUTH CHECK
+        if(!arg.uid || !arg.uname) return new Result(false);
+        let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
+        if(!d) return new Result(false);
+        let {userAuth} = d;
+        
+        if(!userAuth.uploadRP) return errors.denyAuth;
+        // 
+
+        let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
+        if(!w) return errors.worldDNE.unwrap();
+        if(w.ownerUID != arg.uid){
+            return errors.denyWorldUpload;
+        }
+
+        if(w.state != "downloading") return errors.cantFinishWorldDownload;
+
+        w.state = "";
+        updateWorldSearch(arg.mpID,arg.wID);
+        await inst.save();
+
+        return new Result(true);
+    });
     onEv<Arg_FinishUploadWorld,Res_FinishUploadWorld>(socket,"finishUploadWorld",async (arg,call)=>{
         if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
@@ -503,12 +663,30 @@ io.on("connection",socket=>{
 
         w.update++;
         w.lastSync = Date.now();
+        if(w.state == "uploading") w.state = "";
         await inst.save();
+
+        io.except(socket.id).emit("updateSearch",{
+            mpID:arg.mpID,
+            id:"world",
+            data:{
+                wID:arg.wID
+            }
+        });
 
         return new Result({
             update:w.update
         });
     });
+
+    function updateWorldSearch(mpID:string,wID:string){
+        io.emit("updateSearch",{
+            mpID,
+            id:"world",
+            data:{ wID }
+        });
+    }
+
     onEv<Arg_DownloadWorldFile,ModifiedFileData>(socket,"download_world_file",async (arg)=>{
         if(arg.path.includes("..") || arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
@@ -532,7 +710,7 @@ io.on("connection",socket=>{
             buf
         });
     });
-    onEv<Arg_GetWorldFiles,Res_GetWorldFiles>(socket,"getWorldFiles",async (arg)=>{
+    onEv<Arg_GetWorldFiles,Res_GetWorldFiles>(socket,"getWorldFiles",async (arg)=>{ // this is basically the startDownloadWorld
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
 
@@ -541,6 +719,8 @@ io.on("connection",socket=>{
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE;
         // 
+
+        if(w.state != "") return errors.worldIsNotAvailableState;
 
         if(w.ownerUID != arg.uid){
             return errors.denyWorldDownload;
@@ -584,6 +764,12 @@ io.on("connection",socket=>{
             if(!w.allowedDirs.includes(f)) continue; // THIS IS DISABLED FOR THE FIRST PUBLISH AND FIRST DOWNLOAD
             await loop(path.join(saveLoc,f),f);
         }
+
+        // if(res){
+        //     w.state = "downloading";
+        //     updateWorldSearch(arg.mpID,arg.wID);
+        //     await inst.save();
+        // }
         
         return new Result(res);
     });
@@ -671,12 +857,14 @@ io.on("connection",socket=>{
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE;
 
-        if(w.ownerUID == arg.uid || w.ownerName == arg.uname) return errors.alreadyOwnerOfWorld;
+        // if(w.ownerUID == arg.uid || w.ownerName == arg.uname) return errors.alreadyOwnerOfWorld; // I can't have this check bc i need it to return true if it's a success
 
-        let perm = w._perm.users.find(v=>v.uid == arg.uid || v.uname == arg.uname);
-        if(!perm) return errors.noAuthFound;
+        if(w.publisherUID != arg.uid){ // only need to check for auth if you aren't the publisher
+            let perm = w._perm.users.find(v=>v.uid == arg.uid || v.uname == arg.uname);
+            if(!perm) return errors.noAuthFound;
 
-        if(!perm.upload) return errors.denyAuth;
+            if(!perm.upload) return errors.denyAuth;
+        }
         //////
 
         if(w.state != "") return errors.denyTakeWorldOwnership;

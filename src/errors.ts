@@ -58,5 +58,11 @@ export const errors = {
     denyWorldUpload: Result.err("You can't upload unless you have ownership"),
     alreadyOwnerOfWorld: Result.err("You're already the owner of this world"),
     denyChangeWorldState: Result.err("You can only change the state of a world if you are the owner"),
-    denyTakeWorldOwnership: Result.err("The world isn't available to take for ownership at this moment"),
+    denyTakeWorldOwnership: Result.err("The world isn't available to take ownership at this moment"),
+    worldIsNotAvailableState: Result.err("The world isn't in an available state at this moment"),
+    cantFinishWorldDownload: Result.err("Tried to finish downloading when world wasn't in a downloading state"),
+    denyPublisherAuth: Result.err("Only the original publisher of a world can do this"),
+    noChangeMade: Result.err("No change was made"),
+    denyLaunchFromUnownedWorlds: Result.err("You can't launch an instance that contains worlds that you don't own currently."),
+    notAllWorldsAreAvailable: Result.err("No all worlds in this instance are in an available state to use.\n\nPlease wait until all uploads or downloads have finished."),
 };
