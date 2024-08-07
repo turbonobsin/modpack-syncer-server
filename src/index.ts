@@ -890,7 +890,7 @@ io.on("connection",socket=>{
     });
 });
 
-const port = 3001;
+const port = 25565;
 
 async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)=>void){
     let mp = (await modpackCache.get(mpID)).unwrap();
