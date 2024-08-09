@@ -5,6 +5,7 @@ import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWith
 import { modpackCache } from "./cache";
 import { errors, Result } from "./errors";
 import path from "path";
+import formidable from "formidable";
 
 const app = express();
 const server = createServer(app);
@@ -919,12 +920,25 @@ async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)
     return {mp,userAuth};
 }
 
-// app.post("/upload_rp",(req,res)=>{
-//     console.log(req.query);
-//     res.send({
-//         text:"this is the res"
-//     });
-// });
+app.post("/upload_test",(req,res)=>{
+    const form = new formidable.IncomingForm();
+    form.parse(req,(err,fields,files)=>{
+        if(err != null){
+            console.log("Err uploading: ",err);
+            return res.status(400).json({message:err.message});
+        }
+
+        let names = Object.keys(files);
+        res.json({names});
+
+        console.log("NAMES:",names);
+    });
+    
+    console.log(req.body);
+    res.send({
+        text:"this is the res"
+    });
+});
 
 app.get("/image",(req,res)=>{
     // req.params.id
