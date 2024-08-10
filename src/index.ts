@@ -225,6 +225,7 @@ io.on("connection",socket=>{
         if(!userAuth.uploadRP) return errors.denyAuth;
         // 
 
+        arg.path = fixPath(arg.path);
         arg.path = arg.path.substring(1);
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpName,arg.path);
 
@@ -241,6 +242,7 @@ io.on("connection",socket=>{
     onEv<Arg_DownloadRPFile,ModifiedFileData>(socket,"download_rp_file",async (arg)=>{
         if(arg.path.includes("..") || arg.mpID.includes("..") || arg.rpName.includes("..")) return errors.invalid_args;
 
+        arg.path = fixPath(arg.path);
         if(arg.path[0] == "/") arg.path = arg.path.substring(1);
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpName,arg.path);
 
@@ -471,6 +473,7 @@ io.on("connection",socket=>{
         if(!userAuth.uploadRP) return errors.denyAuth;
         // 
 
+        arg.path = fixPath(arg.path);
         let loc = path.join("..","modpacks",arg.mpID,"saves",arg.wID,arg.path);
 
         let res = await util_mkdir(path.dirname(loc),true);
@@ -688,9 +691,14 @@ io.on("connection",socket=>{
         });
     }
 
+    function fixPath(loc:string){
+        return loc.replaceAll("\\","/");
+    }
+
     onEv<Arg_DownloadWorldFile,ModifiedFileData>(socket,"download_world_file",async (arg)=>{
         if(arg.path.includes("..") || arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
+        arg.path = fixPath(arg.path);
         if(arg.path[0] == "/") arg.path = arg.path.substring(1);
         let loc = path.join("..","modpacks",arg.mpID,"saves",arg.wID,arg.path);
 
