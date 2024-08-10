@@ -28,7 +28,16 @@
             }
         ]
     },
-    "_resourcepacks": [],
+    "_resourcepacks": [
+        {
+            "_perm": {
+                "users": []
+            },
+            "ownerUID": "c89fc0be50cb4add9f1d1a7ac3ceadd9",
+            "rpID": "Claeb's Custom PBR",
+            "update": 3
+        }
+    ],
     "_worlds": [
         {
             "wID": "New World",
@@ -38,8 +47,8 @@
             "_perm": {
                 "users": []
             },
-            "update": 3,
-            "lastSync": 1723088298605,
+            "update": 18,
+            "lastSync": 1723276046792,
             "updateTime": 1723087901817,
             "publisherUID": "c89fc0be50cb4add9f1d1a7ac3ceadd9",
             "publisherName": "Claeb",

@@ -1006,6 +1006,38 @@ app.get("/world_image",(req,res)=>{
     res.sendFile(path.join(__dirname,"..","modpacks",mpID,"saves",wID,"icon.png"));
 });
 
+app.use(express.json({
+    limit:"100mb"
+}));
+app.post("/world/upload_full",async (req,res)=>{
+    let sid = req.headers["socket-id"];
+    if(!sid){
+        res.sendStatus(400);
+        return;
+    }
+    if(typeof sid == "object") sid = sid[0];
+    
+    let body = req.body as {
+        files:{
+            buf:Uint8Array;
+            path:string;
+        }[];
+        mpID:string;
+        wID:string;
+        uid:string;
+        uname:string;
+    };
+    if(!body){
+        res.sendStatus(400);
+        return;
+    }
+
+    console.log("-------------------------------");
+    console.log("DATA:",body);
+
+    res.sendStatus(200);
+});
+
 server.listen(port,()=>{
     console.log(`Server listening on port ${port}`);
 });
