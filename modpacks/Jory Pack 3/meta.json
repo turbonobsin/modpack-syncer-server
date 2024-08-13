@@ -1,9 +1,0 @@
-{
-    "whitelist":[],
-    
-    "id":"Jory Pack 3",
-    "name":"Jory Pack 3",
-    "desc":"This is the 3th iteration of the Jory Pack updated to 1.20.4, focusing on vanilla + shaders with high performance.",
-    "loader":"fabric",
-    "version":"1.20.4"
-}
