@@ -55,17 +55,18 @@ io.on("connection",socket=>{
         call(new Result(cache.meta));
     });
 
-    onEv<Arg_SearchPacks,Res_SearchPacks>(socket,"searchPacks",async (arg)=>{
-        let res = modpackCache.findLike(arg.query);
+    onEv<Arg_SearchPacks,Res_SearchPacks>(socket,"searchPacks",async (arg)=>{        
+        let res = modpackCache.findLike(arg.query,arg.uid,arg.uname);
         
         return new Result({
             similar:res
         });
     });
     onEv<Arg_SearchPacks,Res_SearchPacksMeta>(socket,"searchPacksMeta",async (arg)=>{
-        let res = await modpackCache.getLike(arg.query);
+        let res = await modpackCache.getLike(arg.query,arg.uid,arg.uname);
+        let metas = res.map(v=>v.meta);
         return new Result({
-            similar:res.map(v=>v.meta)
+            similar:metas
         });
     });
 
@@ -160,8 +161,8 @@ io.on("connection",socket=>{
     onEv<Arg_UploadRP,Res_UploadRP>(socket,"uploadRP",async (arg,call)=>{
         let d = await getUserAuth(arg.mpID,arg.uid,arg.uname,call);
         if(!d) return errors.invalid_args;
-        if(!d.mp) return errors.invalid_args;
-        if(!d.userAuth) return errors.invalid_args;
+        if(!d.mp) return errors.couldNotFindPack;
+        if(!d.userAuth) return errors.noAuthFound;
 
         let {userAuth,mp} = d;
         
@@ -1012,6 +1013,21 @@ app.get("/world_image",(req,res)=>{
     }
 
     res.sendFile(path.join(__dirname,"..","modpacks",mpID,"saves",wID,"icon.png"));
+});
+app.get("/modpack_image",(req,res)=>{
+    let mpID = req.query.mpID?.toString();
+
+    if(!mpID){
+        res.sendStatus(400);
+        return;
+    }
+
+    if(mpID.includes("..")){
+        res.sendStatus(400);
+        return;
+    }
+
+    res.sendFile(path.join(__dirname,"..","modpacks",mpID,"icon.png"));
 });
 
 app.use(express.json({

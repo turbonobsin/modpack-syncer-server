@@ -1,4 +1,6 @@
 {
+    "whitelist":[],
+    
     "id":"Shaders Forge 1.18.2",
     "name":"Shaders Forge 1.18.2",
     "desc":"This is the 3rd pack of The Gang.",

@@ -1,6 +1,6 @@
 import path from "path";
 import { errors, Result } from "./errors";
-import { util_lstat, util_mkdir, util_readdir, util_readJSON, util_warn, util_writeJSON } from "./util";
+import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readJSON, util_warn, util_writeJSON } from "./util";
 
 class ModpackCacheItem{
     constructor(id:string,meta:PackMetaData){
@@ -77,6 +77,12 @@ class ModpackCache{
             return errors.failedToReadPack;
         }
 
+        let mmcPackFile = await util_readBinary(path.join(loc,"mmc-pack.json"));
+        let instanceCfg = await util_readBinary(path.join(loc,"instance.cfg"));
+
+        if(mmcPackFile) meta.mmcPackFile = mmcPackFile;
+        if(instanceCfg) meta.instanceCfgFile = instanceCfg;
+
         // 
         let cacheLoc = path.join("..","modpacks",id,"cache");
         await util_mkdir(cacheLoc);
@@ -96,8 +102,8 @@ class ModpackCache{
         // console.log(".. got from cache");
         return new Result(item);
     }
-    async getLike(id?:string){
-        let similar = this.findLike(id);
+    async getLike(id?:string,uid?:string,uname?:string){
+        let similar = this.findLike(id,uid,uname);
         let metaList:ModpackCacheItem[] = [];
         for(const id of similar){
             let item = (await this.get(id)).unwrap();
@@ -105,10 +111,16 @@ class ModpackCache{
         }
         return metaList;
     }
-    findLike(query?:string){
+    findLike(query?:string,uid?:string,uname?:string){
         if(!query) query = "";
         let similar:string[] = [];
         outer: for(const [k,v] of this.cache){
+            if(v.meta){
+                if(v.meta.whitelist){
+                    if(!v.meta.whitelist.includes(uid??"") && !v.meta.whitelist.includes(uname??"")) continue;
+                }
+            }
+            
             let parts1 = query.trim().split(" ").map(v=>v.toLowerCase().trim());
             let parts2 = v.meta.name.trim().split(" ").map(v=>v.toLowerCase().trim());
 

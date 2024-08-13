@@ -5,6 +5,15 @@ interface PackMetaData{
     loader:string;
     version:string;
 
+    mmcPackFile?:Uint8Array;
+    instanceCfgFile?:Uint8Array;
+
+    RAM?:number;
+    javaCodeName?:string; // delta (v21), gamma (v17), beta (v1.8)
+    // C:\Users\user\AppData\Local\Packages\Microsoft.4297127D64EC6_8wekyb3d8bbwe\LocalCache\Local\runtime
+
+    whitelist?:string[]; // to view
+
     update:number;
 
     _perm:{
@@ -187,6 +196,8 @@ interface UserAuth extends Base_UserAuth{
 
 type Arg_SearchPacks = {
     query?:string
+    uid:string;
+    uname:string;
 };
 interface Res_SearchPacks{
     similar:string[];
