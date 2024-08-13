@@ -33,8 +33,8 @@ class ModpackCacheItem{
     }
 
     async save(){
-        this.meta.mmcPackFile = undefined;
-        this.meta.instanceCfgFile = undefined;
+        // this.meta.mmcPackFile = undefined;
+        // this.meta.instanceCfgFile = undefined;
         
         const loc = path.join("..","modpacks",this.id,"meta.json");
         await util_writeJSON(loc,this.meta_og);
