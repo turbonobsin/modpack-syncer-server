@@ -53,9 +53,10 @@ export function util_readBinary(path:fs.PathOrFileDescriptor){
     });
 }
 export function util_writeJSON(path:fs.PathOrFileDescriptor,data:any){
-    return new Promise<void>(resolve=>{
-        fs.writeFile(path,JSON.stringify(data,undefined,4),{encoding:"utf8"},()=>{
-            resolve();
+    return new Promise<boolean>(resolve=>{
+        fs.writeFile(path,JSON.stringify(data,undefined,4),{encoding:"utf8"},(err)=>{
+            if(err) resolve(false);
+            else resolve(true);
         });
     });
 }

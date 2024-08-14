@@ -5,6 +5,9 @@ interface PackMetaData{
     loader:string;
     version:string;
 
+    publisherUID?:string;
+    publisherName?:string;
+
     mmcPackFile?:Uint8Array;
     instanceCfgFile?:Uint8Array;
 
@@ -22,6 +25,39 @@ interface PackMetaData{
     _resourcepacks:RPMeta[];
     _worlds:SWorldMeta[];
 }
+
+interface ConfigFile{
+    modpacks:{
+        needPermToPublish:boolean;
+    }
+}
+
+interface Arg_Connection{
+    uid:string;
+    uname:string;
+}
+
+interface Arg_PublishModpack{
+    meta:PackMetaData;
+    icon?:Uint8Array;
+    mmcPackFile?:Uint8Array;
+}
+interface Arg_UploadModpack{
+    files:{
+        sloc:string;
+        mTime:number;
+    }[];
+    mpID:string;
+}
+interface Res_UploadModpack{
+    files:string[];
+}
+interface Arg_UploadModpackFile{
+    buf:Uint8Array;
+    sloc:string;
+    mpID:string;
+}
+
 interface SWorldMeta{
     wID:string;
     icon:string;

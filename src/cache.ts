@@ -154,5 +154,102 @@ class ModpackCache{
     }
 }
 
+class User{
+    constructor(data:any){
+        // this.uid = data.uid;
+        // this.uname = data.uname;
+
+        let ok = Object.keys(data);
+        for(const k of ok){
+            if(k == "socks") continue;
+
+            (this as any)[k] = data[k];
+        }
+
+        this.socks = new Set();
+    }
+    uid!:string;
+    uname!:string;
+    socks:Set<string>;
+
+    async save(){
+        // for now just save immidiately
+        await util_writeJSON(path.join("../users",this.uid+".json"),this.serialize());
+    }
+    serialize(){
+        return {
+            uid:this.uid,
+            uname:this.uname
+        };
+    }
+}
+class UserCache{
+    constructor(){
+        this.users = new Map();
+        this.socks = new Map();
+    }
+    users:Map<string,User>;
+    socks:Map<string,User>;
+
+    async init(){
+        await util_mkdir("../users");
+        let files = await util_readdir("../users");
+        for(const file of files){
+            let uid = file.substring(0,file.length-".json".length);
+            let data = await util_readJSON(path.join("../users",file));
+            let u = new User(data);
+            this.users.set(uid,u);
+        }
+    }
+
+    connect(sid:string,data:Arg_Connection){
+        if(!data.uid) return;
+        if(!data.uname) return;
+        if(!sid) return;
+        
+        if(!this.users.has(data.uid)){
+            let u = new User({
+                uid:data.uid,
+                uname:data.uname
+            });
+            this.users.set(data.uid,u);
+        }
+
+        let u = this.users.get(data.uid);
+        if(!u) return;
+
+        u.socks.add(sid);
+        this.socks.set(sid,u);
+
+        u.save();
+
+        return true;
+    }
+    disconnect(sid:string){
+        if(!sid) return;
+
+        let u = this.socks.get(sid);
+        if(u){
+            u.socks.delete(sid);
+            this.socks.delete(sid);
+        }
+    }
+
+    getByUID(uid:string){
+        return this.users.get(uid);
+    }
+    getBySockId(sid:string){
+        return this.socks.get(sid);
+    }
+}
+
 export const modpackCache = new ModpackCache();
 modpackCache.init();
+
+export const userCache = new UserCache();
+userCache.init();
+
+export let configFile:ConfigFile|undefined;
+util_readJSON<ConfigFile>("../data/config.json").then(v=>{
+    configFile = v;
+});

@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
 import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_rm, util_utimes, util_warn, util_writeBinary, util_writeJSON } from "./util";
-import { modpackCache } from "./cache";
+import { configFile, modpackCache, userCache } from "./cache";
 import { errors, Result } from "./errors";
 import path from "path";
 import formidable from "formidable";
@@ -42,6 +42,16 @@ io.on("connection",socket=>{
     // socket.on("msg",msg=>{
     //     console.log("got msg: ",msg);
     // });
+
+    onEv<Arg_Connection,boolean>(socket,"connectUser",async (arg)=>{
+        console.log("User Connect:",arg.uid,arg.uname);
+        let res = !!userCache.connect(socket.id,arg);
+        return new Result(res);
+    });
+    socket.on("disconnect",()=>{
+        userCache.disconnect(socket.id);
+        // console.log("Disconnect: "+socket.id);
+    });
 
     // 
     socket.on("getPackMetas",()=>{
@@ -163,6 +173,8 @@ io.on("connection",socket=>{
         if(!d) return errors.invalid_args;
         if(!d.mp) return errors.couldNotFindPack;
         if(!d.userAuth) return errors.noAuthFound;
+
+        if(arg.name.endsWith(".disabled")) return errors.noDisabledRP;
 
         let {userAuth,mp} = d;
 
@@ -410,6 +422,8 @@ io.on("connection",socket=>{
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
 
+        if(arg.wID.endsWith(".disabled")) return errors.noDisabledWorld;
+
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE;
         if(w.ownerUID != arg.uid){
@@ -423,6 +437,8 @@ io.on("connection",socket=>{
     onEv<SArg_PublishWorld,boolean>(socket,"publishWorld",async (arg,call)=>{
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
+
+        if(arg.wID.endsWith(".disabled")) return errors.noDisabledWorld;
 
         // AUTH CHECK
         if(!arg.ownerUID || !arg.ownerName) return new Result(false);
@@ -602,6 +618,8 @@ io.on("connection",socket=>{
     });
     onEv<Arg_FinishUploadWorld,boolean>(socket,"startUploadWorld",async (arg,call)=>{
         if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
+
+        if(arg.wID.endsWith(".disabled")) return errors.noDisabledWorld;
 
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
@@ -942,6 +960,116 @@ io.on("connection",socket=>{
         });
 
         return new Result(true);
+    });
+
+    // ModPacks (new)
+    onEv<Arg_PublishModpack,boolean>(socket,"publishModpack",async (arg)=>{
+        if(!validatePath(arg.meta.id)) return errors.invalid_args;
+        if(arg.meta.id == undefined) return errors.invalid_args;
+        if(arg.meta.name == undefined) return errors.invalid_args;
+        if(arg.meta.loader == undefined) return errors.invalid_args;
+        if(arg.meta.version == undefined) return errors.invalid_args;
+
+        let user = userCache.getBySockId(socket.id);
+        if(!user) return errors.noUser;
+
+        if(!arg.meta.desc) arg.meta.desc = "No description.";
+
+        if(!configFile) return errors.noConfig; // no config
+
+        if(configFile.modpacks.needPermToPublish){
+            // stuff
+        }
+
+        let loc = path.join("../modpacks",arg.meta.id);
+        if(await util_lstat(loc)) return errors.modpackAlreadyExists;
+
+        let reses:boolean[] = [];
+        reses.push(await util_mkdir(loc,true));
+        reses.push(await util_mkdir(path.join(loc,"mods"),true));
+        reses.push(await util_mkdir(path.join(loc,"resourcepacks"),true));
+        reses.push(await util_mkdir(path.join(loc,"saves"),true));
+
+        if(arg.icon) reses.push(
+            await util_writeBinary(path.join(loc,"icon.png"),Buffer.from(arg.icon))
+        );
+        if(arg.mmcPackFile) reses.push(
+            await util_writeBinary(path.join(loc,"mmc-pack.json"),Buffer.from(arg.mmcPackFile))
+        );
+
+        let newMeta:PackMetaData = {} as any;
+        let ok = Object.keys(arg.meta);
+        for(const k of ok){
+            if(k.startsWith("_")) continue;
+            (newMeta as any)[k] = (arg.meta as any)[k];
+        }
+
+        newMeta.publisherUID = user.uid;
+        newMeta.publisherName = user.uname;
+
+        reses.push(
+            await util_writeJSON(path.join(loc,"meta.json"),newMeta)
+        );
+
+        if(reses.includes(false)) return errors.failedPublishModpack;
+        //
+
+        modpackCache.add(arg.meta.id,newMeta);
+        
+        return new Result(true);
+    });
+    onEv<Arg_UploadModpack,Res_UploadModpack>(socket,"uploadModpack",async (arg)=>{
+        if(!validatePath(arg.mpID)) return errors.invalid_args;
+
+        let user = userCache.getBySockId(socket.id);
+        if(!user) return errors.noUser;
+
+        let mp = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!mp) return errors.couldNotFindPack;
+
+        if(mp.meta_og.publisherUID != user.uid) return errors.denyAuth;
+
+        let mpLoc = path.join("../modpacks",arg.mpID);
+        if(!await util_lstat(mpLoc)) return errors.modpackDNE;
+
+        let files:string[] = [];
+
+        for(const file of arg.files){
+            if(!validatePath(file.sloc)) continue;
+
+            let loc = path.join(mpLoc,"mods",file.sloc);
+            let stat = await util_lstat(loc);
+    
+            if(stat) if(!(file.mTime > stat.mtimeMs && file.mTime > stat.birthtimeMs)) continue;
+
+            files.push(file.sloc);
+        }
+
+        return new Result({
+            files
+        });
+    });
+    onEv<Arg_UploadModpackFile,number>(socket,"upload_modpack_file",async (arg)=>{
+        if(!validatePath(arg.sloc)) return new Result(0);
+        if(!validatePath(arg.mpID)) return new Result(0);
+
+        // 
+        let user = userCache.getBySockId(socket.id);
+        if(!user) return errors.noUser;
+
+        let mp = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!mp) return errors.couldNotFindPack;
+
+        if(mp.meta_og.publisherUID != user.uid) return errors.denyAuth;
+        // 
+
+        let mpLoc = path.join("../modpacks",arg.mpID);
+        if(!await util_lstat(mpLoc)) return new Result(0);
+        
+        let loc = path.join(mpLoc,"mods",arg.sloc);
+        
+        let res = await util_writeBinary(loc,Buffer.from(arg.buf));
+        return new Result(res ? 2 : 0);
     });
 
     // 

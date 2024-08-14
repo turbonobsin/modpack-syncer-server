@@ -47,6 +47,7 @@ export const errors = {
 
     rpAlreadyExists: Result.err("A resource pack with that name has already been uploaded"),
     couldNotFindRP: Result.err("Could not find resource pack"),
+    noDisabledRP: Result.err("You can't upload a disabled resource pack"),
 
     fileDNE: Result.err("File does not exist"),
     failedToReadStats: Result.err("Failed to read stats of file"),
@@ -65,4 +66,14 @@ export const errors = {
     noChangeMade: Result.err("No change was made"),
     denyLaunchFromUnownedWorlds: Result.err("You can't launch an instance that contains worlds that you don't own currently."),
     notAllWorldsAreAvailable: Result.err("No all worlds in this instance are in an available state to use.\n\nPlease wait until all uploads or downloads have finished."),
+    noDisabledWorld: Result.err("You can't upload a disabled world"),
+
+    // modpacks
+    modpackAlreadyExists: Result.err("A modpack with that name already exists"),
+    failedPublishModpack: Result.err("Failed to publish the modpack"),
+    modpackDNE: Result.err("Modpack doesn't exist"),
+
+    // 
+    noConfig: Result.err("The server's config file isn't loaded yet"),
+    noUser: Result.err("Couldn't find your user data on this server"),
 };
