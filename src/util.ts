@@ -91,6 +91,18 @@ export function util_mkdir(path:fs.PathLike,recursive=false){
         });
     });
 }
+export function util_rm(path:fs.PathLike,recursive=false){
+    return new Promise<boolean>(resolve=>{
+        fs.rm(path,{recursive},(err=>{
+            if(err){
+                util_warn("Failed to delete file: "+path);
+                resolve(false);
+            }
+            else resolve(true);
+        }));
+    });
+}
+
 export function util_utimes(path:string,ops:{
     mtime:number,
     btime:number,

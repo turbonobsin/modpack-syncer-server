@@ -189,6 +189,12 @@ interface RPUserAuth extends Base_UserAuth{
     upload?:boolean;
 }
 
+interface Arg_UnpublishRP{
+    mpID:string;
+    rpID:string;
+    uid:string;
+}
+
 interface UserAuth extends Base_UserAuth{
     uploadRP?:boolean;
     uploadWorld?:boolean;

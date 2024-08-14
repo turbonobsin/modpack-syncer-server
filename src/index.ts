@@ -1,7 +1,7 @@
 import express from "express";
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
-import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_utimes, util_warn, util_writeBinary, util_writeJSON } from "./util";
+import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_rm, util_utimes, util_warn, util_writeBinary, util_writeJSON } from "./util";
 import { modpackCache } from "./cache";
 import { errors, Result } from "./errors";
 import path from "path";
@@ -165,8 +165,6 @@ io.on("connection",socket=>{
         if(!d.userAuth) return errors.noAuthFound;
 
         let {userAuth,mp} = d;
-        
-        if(!userAuth.uploadRP) return errors.denyAuth;
 
         let existingRP = d.mp.meta_og._resourcepacks.find(v=>v.rpID == arg.name);
         if(existingRP){
@@ -180,6 +178,9 @@ io.on("connection",socket=>{
             }
             
             if(!ableToUpload) return errors.rpAlreadyExists;
+        }
+        else{
+            if(!userAuth.uploadRP) return errors.denyAuth;
         }
 
         // create meta
@@ -224,19 +225,28 @@ io.on("connection",socket=>{
         let {userAuth} = d;
         
         if(!userAuth.uploadRP) return errors.denyAuth;
+        else{
+            let permData = d.mp.meta_og._resourcepacks.find(v=>v.rpID == arg.rpName);
+            if(!permData) return errors.denyAuth;
+            if(permData.ownerUID != arg.uid){
+                let perm = permData._perm.users.find(v=>v.uid == arg.uid || v.uname == arg.uname);
+                if(!perm) return errors.denyAuth;
+                if(!perm.upload) return errors.denyAuth;
+            }
+        }
         // 
 
         arg.path = fixPath(arg.path);
-        arg.path = arg.path.substring(1);
+        if(arg.path[0] == "/") arg.path = arg.path.substring(1);
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpName,arg.path);
 
         let res = await util_mkdir(path.dirname(loc),true);
         if(!res) return new Result(false);
         
         res = await util_writeBinary(loc,Buffer.from(arg.buf));
-        let stat = await util_lstat(loc);
+        // let stat = await util_lstat(loc);
         // if(stat) console.log("STAT: ",arg.path,new Date(stat.mtimeMs),new Date(stat.birthtimeMs),new Date(arg.mt),new Date(arg.bt));
-        let utimes_res = await util_utimes(loc,{ atime:arg.at, mtime:arg.mt, btime:arg.bt });
+        // let utimes_res = await util_utimes(loc,{ atime:arg.at, mtime:arg.mt, btime:arg.bt });
 
         return new Result(res);
     });
@@ -327,12 +337,12 @@ io.on("connection",socket=>{
         if(!inst) return errors.couldNotFindPack;
 
         let cacheMeta = inst.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
-        if(!cacheMeta) return errors.couldNotFindRP;
+        // if(!cacheMeta) return errors.couldNotFindRP; // <-- this is disabled bc if not, then if a pack failed to upload you wouldn't be able to download it
 
         return new Result({
             add:addFiles,
             remove:removeFiles,
-            update:cacheMeta.update
+            update:cacheMeta?.update ?? 0
         });
     });
 
@@ -445,6 +455,35 @@ io.on("connection",socket=>{
 
         return new Result(true);
     });
+    function validatePath(loc:string){
+        if(loc.includes("..")) return false;
+        return true;
+    }
+    onEv<Arg_UnpublishRP,boolean>(socket,"unpublishRP",async (arg)=>{
+        if(!validatePath(arg.mpID) || !validatePath(arg.rpID)) return errors.invalid_args;
+        
+        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let w = inst.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
+        // vvv - this is disabled for now because there's a chance that the pack was uploaded but it's not in the array so commenting this out will allow you to fix the glitch
+        // if(!w) return errors.couldNotFindRP;
+
+        if(w){
+            if(w.ownerUID != arg.uid) return errors.denyAuth;
+
+            let ind = inst.meta_og._resourcepacks.findIndex(v=>v.rpID == arg.rpID);
+            if(ind != -1){
+                inst.meta_og._resourcepacks.splice(ind,1);
+                await inst.save();
+            }
+        }
+
+        let loc = path.join("../modpacks",arg.mpID,"resourcepacks",arg.rpID);
+        let res = await util_rm(loc,true);
+        
+        return new Result(res);
+    });
     onEv<Arg_UnpublishWorld,boolean>(socket,"unpublishWorld",async (arg)=>{
         let inst = (await modpackCache.get(arg.mpID)).unwrap();
         if(!inst) return errors.couldNotFindPack;
@@ -471,7 +510,7 @@ io.on("connection",socket=>{
         if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP) return errors.denyAuth;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
         // 
 
         arg.path = fixPath(arg.path);
@@ -541,13 +580,16 @@ io.on("connection",socket=>{
         if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP) return errors.denyAuth;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
         if(!w) return errors.worldDNE.unwrap();
-        if(w.publisherUID != arg.uid){
-            return errors.denyPublisherAuth;
+        // if(w.publisherUID != arg.uid){
+        //     return errors.denyPublisherAuth;
+        // }
+        if(arg.uid != w.publisherUID && arg.uid != w.ownerUID){
+            return errors.denyAuth;
         }
 
         if(w.state == "") return errors.noChangeMade;
@@ -570,7 +612,7 @@ io.on("connection",socket=>{
         if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP) return errors.denyAuth;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
@@ -599,7 +641,7 @@ io.on("connection",socket=>{
         if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP) return errors.denyAuth;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
@@ -628,7 +670,7 @@ io.on("connection",socket=>{
         if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP) return errors.denyAuth;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
@@ -657,7 +699,7 @@ io.on("connection",socket=>{
         if(!d) return new Result(false);
         let {userAuth} = d;
         
-        if(!userAuth.uploadRP) return errors.denyAuth;
+        if(!userAuth.uploadWorld) return errors.denyAuth;
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
