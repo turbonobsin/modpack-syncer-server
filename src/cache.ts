@@ -63,6 +63,9 @@ class ModpackCache{
         this.cache.set(id,item);
         return item;
     }
+    delete(mpID:string){
+        this.cache.delete(mpID);
+    }
 
     async getFromHD(id:string):Promise<Result<ModpackCacheItem>>{
         const loc = "../modpacks/"+id;

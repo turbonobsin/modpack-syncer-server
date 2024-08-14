@@ -1045,6 +1045,8 @@ io.on("connection",socket=>{
             files.push(file.sloc);
         }
 
+        await util_mkdir(path.join(mpLoc,"mods",".index"),true);
+
         return new Result({
             files
         });
@@ -1067,9 +1069,26 @@ io.on("connection",socket=>{
         if(!await util_lstat(mpLoc)) return new Result(0);
         
         let loc = path.join(mpLoc,"mods",arg.sloc);
-        
         let res = await util_writeBinary(loc,Buffer.from(arg.buf));
         return new Result(res ? 2 : 0);
+    });
+    onEv<string,boolean>(socket,"unpublishModpack",async (mpID)=>{
+        if(!validatePath(mpID)) return errors.invalid_args;
+        
+        let inst = (await modpackCache.get(mpID)).unwrap();
+        if(!inst) return errors.couldNotFindPack;
+
+        let user = userCache.getBySockId(socket.id);
+        if(!user) return errors.noUser;
+        
+        if(inst.meta_og.publisherUID != user.uid) return errors.denyAuth;
+
+        let res = await util_rm(path.join("../modpacks",mpID),true);
+        if(res){
+            modpackCache.delete(mpID);
+        }
+
+        return new Result(res);
     });
 
     // 
