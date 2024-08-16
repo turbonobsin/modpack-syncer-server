@@ -80,14 +80,14 @@ io.on("connection",socket=>{
         });
     });
 
-    onEv<Arg_GetWorldMeta,Res_GetWorldMeta>(socket,"getWorldMeta",async (arg)=>{
+    onEv<Arg_GetWorldMeta,Res_GetWorldMeta>(socket,"getWorldMeta",async (arg,call)=>{
         if(!arg) return errors.invalid_args;
         if(!arg.mpID) return errors.invalid_args;
         if(!arg.wID) return errors.invalid_args;
         
         let cacheRes = await modpackCache.get(arg.mpID);
         if(cacheRes.err) return cacheRes;
-        let cache = cacheRes.unwrap();
+        let cache = cacheRes.unwrap(call);
         if(!cache) return errors.couldNotFindPack;
 
         let w = cache.meta_og._worlds.find(v=>v.wID == arg.wID);
@@ -112,10 +112,10 @@ io.on("connection",socket=>{
     });
 
     // sync
-    onEv<{id:string,update:number},boolean>(socket,"checkModUpdates",async (arg)=>{
+    onEv<{id:string,update:number},boolean>(socket,"checkModUpdates",async (arg,call)=>{
         if(arg.update == undefined) arg.update = 0;
 
-        let pack = (await modpackCache.get(arg.id)).unwrap();
+        let pack = (await modpackCache.get(arg.id)).unwrap(call);
         if(!pack) return errors.couldNotFindPack;
 
         if(pack.meta.update > arg.update) return new Result(true);
@@ -204,12 +204,16 @@ io.on("connection",socket=>{
                 },
                 ownerUID:arg.uid,
                 rpID:arg.name,
-                update:0
+                update:0,
+                lastUploaded:-1,
+                whoLastUploaded:userAuth.uname??"(Unknown User)"
             };
             d.mp.meta_og._resourcepacks.push(cacheMeta);
 
         }
         cacheMeta.update++;
+        cacheMeta.lastUploaded = Date.now();
+        cacheMeta.whoLastUploaded = userAuth.uname;
         await d.mp.save();
 
         // 
@@ -225,6 +229,26 @@ io.on("connection",socket=>{
             res:1,
             update:cacheMeta.update
         });
+    });
+    onEv<Arg_FinishUploadRP,{update:number}>(socket,"finishUploadRP",async (arg,call)=>{
+        if(!arg.mpID) return errors.invalid_args;
+        if(!arg.rpID) return errors.invalid_args;
+        
+        let user = userCache.getBySockId(socket.id);
+        if(!user) return errors.noUser;
+
+        let res = await getUserAuth(arg.mpID,user.uid,user.uname,call);
+        if(!res) return errors.unknown;
+
+        let rp = res.mp.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
+        if(!rp) return errors.couldNotFindRP; // is this the right error here or should I make a new one?
+        // 
+
+        rp.lastUploaded = Date.now();
+        rp.whoLastUploaded = user.uname;
+        await res.mp.save();
+
+        return new Result({update:rp.update});
     });
 
     onEv<Arg_UploadRPFile,boolean>(socket,"upload_rp_file",async (arg,call)=>{
@@ -287,7 +311,7 @@ io.on("connection",socket=>{
         });
     });
 
-    onEv<Arg_DownloadRP,Res_DownloadRP>(socket,"downloadRP",async (arg)=>{
+    onEv<Arg_DownloadRP,Res_DownloadRP>(socket,"downloadRP",async (arg,call)=>{
         let loc = path.join("..","modpacks",arg.mpID,"resourcepacks",arg.rpID);
         if(!await util_lstat(loc)) return errors.couldNotFindRP;
 
@@ -345,7 +369,7 @@ io.on("connection",socket=>{
         // for(const v of addFiles) v.l = path.relative(loc,v.l);
         // for(const v of removeFiles) v.l = path.relative(loc,v.l);
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         let cacheMeta = inst.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
@@ -358,8 +382,37 @@ io.on("connection",socket=>{
         });
     });
 
-    onEv<Arg_GetRPs,Res_GetRPs>(socket,"getRPs",async (arg)=>{
-        let mp = (await modpackCache.get(arg.mpID)).unwrap();
+    onEv<Arg_GetRPInfo,Res_GetRPInfo>(socket,"getRPInfo",async (arg,call)=>{
+        if(!arg.mpID) return errors.invalid_args;
+        if(!arg.rpID) return errors.invalid_args;
+        if(!validatePath(arg.mpID)) return errors.invalid_args;
+        if(!validatePath(arg.rpID)) return errors.invalid_args;
+        
+        let user = userCache.getBySockId(socket.id);
+        if(!user) return errors.noUser;
+        
+        let perm1 = await getUserAuth(arg.mpID,user.uid,user.uname,call);
+        if(!perm1) return errors.couldNotFindPack;
+
+        let rp = perm1.mp.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
+        if(!rp) return new Result({
+            isPublished:false,
+            canUpload:!!perm1.userAuth.uploadRP
+        });
+
+        return new Result({
+            isPublished:true,
+            canUpload:!!perm1.userAuth.uploadRP,
+            data:{
+                update:rp.update,
+                lastUploaded:rp.lastUploaded,
+                whoLastUploaded:rp.whoLastUploaded
+            }
+        });
+    });
+
+    onEv<Arg_GetRPs,Res_GetRPs>(socket,"getRPs",async (arg,call)=>{
+        let mp = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!mp) return errors.couldNotFindPack;
 
         let data:Res_GetRPs = {
@@ -418,8 +471,8 @@ io.on("connection",socket=>{
     });
 
     // Worlds
-    onEv<Arg_GetAllowedDirs,boolean>(socket,"getAllowedDirs",async (arg)=>{
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+    onEv<Arg_GetAllowedDirs,boolean>(socket,"getAllowedDirs",async (arg,call)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         if(arg.wID.endsWith(".disabled")) return errors.noDisabledWorld;
@@ -435,7 +488,7 @@ io.on("connection",socket=>{
         return new Result(w.allowedDirs);
     });
     onEv<SArg_PublishWorld,boolean>(socket,"publishWorld",async (arg,call)=>{
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         if(arg.wID.endsWith(".disabled")) return errors.noDisabledWorld;
@@ -475,10 +528,10 @@ io.on("connection",socket=>{
         if(loc.includes("..")) return false;
         return true;
     }
-    onEv<Arg_UnpublishRP,boolean>(socket,"unpublishRP",async (arg)=>{
+    onEv<Arg_UnpublishRP,boolean>(socket,"unpublishRP",async (arg,call)=>{
         if(!validatePath(arg.mpID) || !validatePath(arg.rpID)) return errors.invalid_args;
         
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         let w = inst.meta_og._resourcepacks.find(v=>v.rpID == arg.rpID);
@@ -500,8 +553,8 @@ io.on("connection",socket=>{
         
         return new Result(res);
     });
-    onEv<Arg_UnpublishWorld,boolean>(socket,"unpublishWorld",async (arg)=>{
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+    onEv<Arg_UnpublishWorld,boolean>(socket,"unpublishWorld",async (arg,call)=>{
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
@@ -546,7 +599,7 @@ io.on("connection",socket=>{
     onEv<Arg_LaunchInst,boolean>(socket,"startLaunchInst",async (arg,call)=>{
         if(arg.mpID.includes("..")) return errors.invalid_args;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         let unownedWorlds = inst.meta_og._worlds.filter(v=>v.ownerUID != arg.uid);
@@ -569,7 +622,7 @@ io.on("connection",socket=>{
     onEv<Arg_LaunchInst,boolean>(socket,"finishLaunchInst",async (arg,call)=>{
         if(arg.mpID.includes("..")) return errors.invalid_args;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         let worlds = inst.meta_og._worlds;
@@ -587,7 +640,7 @@ io.on("connection",socket=>{
     onEv<Arg_FinishUploadWorld,boolean>(socket,"forceFixBrokenWorldState",async (arg,call)=>{
         if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -600,7 +653,7 @@ io.on("connection",socket=>{
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
-        if(!w) return errors.worldDNE.unwrap();
+        if(!w) return errors.worldDNE.unwrap(call);
         // if(w.publisherUID != arg.uid){
         //     return errors.denyPublisherAuth;
         // }
@@ -621,7 +674,7 @@ io.on("connection",socket=>{
 
         if(arg.wID.endsWith(".disabled")) return errors.noDisabledWorld;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -634,7 +687,7 @@ io.on("connection",socket=>{
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
-        if(!w) return errors.worldDNE.unwrap();
+        if(!w) return errors.worldDNE.unwrap(call);
         if(w.ownerUID != arg.uid){
             return errors.denyWorldUpload;
         }
@@ -650,7 +703,7 @@ io.on("connection",socket=>{
     onEv<Arg_FinishUploadWorld,boolean>(socket,"startDownloadWorld",async (arg,call)=>{
         if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -663,7 +716,7 @@ io.on("connection",socket=>{
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
-        if(!w) return errors.worldDNE.unwrap();
+        if(!w) return errors.worldDNE.unwrap(call);
         if(w.ownerUID != arg.uid){
             return errors.denyWorldUpload;
         }
@@ -679,7 +732,7 @@ io.on("connection",socket=>{
     onEv<Arg_FinishUploadWorld,boolean>(socket,"finishDownloadWorld",async (arg,call)=>{
         if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -692,7 +745,7 @@ io.on("connection",socket=>{
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
-        if(!w) return errors.worldDNE.unwrap();
+        if(!w) return errors.worldDNE.unwrap(call);
         if(w.ownerUID != arg.uid){
             return errors.denyWorldUpload;
         }
@@ -708,7 +761,7 @@ io.on("connection",socket=>{
     onEv<Arg_FinishUploadWorld,Res_FinishUploadWorld>(socket,"finishUploadWorld",async (arg,call)=>{
         if(arg.mpID.includes("..") || arg.wID.includes("..")) return errors.invalid_args;
 
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -721,7 +774,7 @@ io.on("connection",socket=>{
         // 
 
         let w = inst.meta_og._worlds.find(v=>v.wID == arg.wID);
-        if(!w) return errors.worldDNE.unwrap();
+        if(!w) return errors.worldDNE.unwrap(call);
         if(w.ownerUID != arg.uid){
             return errors.denyWorldUpload;
         }
@@ -780,8 +833,8 @@ io.on("connection",socket=>{
             buf
         });
     });
-    onEv<Arg_GetWorldFiles,Res_GetWorldFiles>(socket,"getWorldFiles",async (arg)=>{ // this is basically the startDownloadWorld
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+    onEv<Arg_GetWorldFiles,Res_GetWorldFiles>(socket,"getWorldFiles",async (arg,call)=>{ // this is basically the startDownloadWorld
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // if(arg.forceAllFiles) arg.useTime = false; // might not need this
@@ -844,7 +897,7 @@ io.on("connection",socket=>{
         return new Result(res);
     });
     onEv<SArg_GetServerWorlds,Res_GetServerWorlds>(socket,"getServerWorlds",async (arg,call)=>{
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // // AUTH CHECK
@@ -875,7 +928,7 @@ io.on("connection",socket=>{
         return new Result(res);
     });
     onEv<Arg_SetWorldState,boolean>(socket,"setWorldState",async (arg,call)=>{
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -914,7 +967,7 @@ io.on("connection",socket=>{
     onEv<Arg_TakeWorldOwnership,boolean>(socket,"takeWorldOwnership",async (arg,call)=>{
         console.log("TAKE WORLD OWNERSHIP:",arg);
         
-        let inst = (await modpackCache.get(arg.mpID)).unwrap();
+        let inst = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         // AUTH CHECK
@@ -1018,13 +1071,13 @@ io.on("connection",socket=>{
         
         return new Result(true);
     });
-    onEv<Arg_UploadModpack,Res_UploadModpack>(socket,"uploadModpack",async (arg)=>{
+    onEv<Arg_UploadModpack,Res_UploadModpack>(socket,"uploadModpack",async (arg,call)=>{
         if(!validatePath(arg.mpID)) return errors.invalid_args;
 
         let user = userCache.getBySockId(socket.id);
         if(!user) return errors.noUser;
 
-        let mp = (await modpackCache.get(arg.mpID)).unwrap();
+        let mp = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!mp) return errors.couldNotFindPack;
 
         if(mp.meta_og.publisherUID != user.uid) return errors.denyAuth;
@@ -1051,7 +1104,7 @@ io.on("connection",socket=>{
             files
         });
     });
-    onEv<Arg_UploadModpackFile,number>(socket,"upload_modpack_file",async (arg)=>{
+    onEv<Arg_UploadModpackFile,number>(socket,"upload_modpack_file",async (arg,call)=>{
         if(!validatePath(arg.sloc)) return new Result(0);
         if(!validatePath(arg.mpID)) return new Result(0);
 
@@ -1059,7 +1112,7 @@ io.on("connection",socket=>{
         let user = userCache.getBySockId(socket.id);
         if(!user) return errors.noUser;
 
-        let mp = (await modpackCache.get(arg.mpID)).unwrap();
+        let mp = (await modpackCache.get(arg.mpID)).unwrap(call);
         if(!mp) return errors.couldNotFindPack;
 
         if(mp.meta_og.publisherUID != user.uid) return errors.denyAuth;
@@ -1072,10 +1125,10 @@ io.on("connection",socket=>{
         let res = await util_writeBinary(loc,Buffer.from(arg.buf));
         return new Result(res ? 2 : 0);
     });
-    onEv<string,boolean>(socket,"unpublishModpack",async (mpID)=>{
+    onEv<string,boolean>(socket,"unpublishModpack",async (mpID,call)=>{
         if(!validatePath(mpID)) return errors.invalid_args;
         
-        let inst = (await modpackCache.get(mpID)).unwrap();
+        let inst = (await modpackCache.get(mpID)).unwrap(call);
         if(!inst) return errors.couldNotFindPack;
 
         let user = userCache.getBySockId(socket.id);
@@ -1100,7 +1153,7 @@ io.on("connection",socket=>{
 const port = 25565;
 
 async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)=>void){
-    let mp = (await modpackCache.get(mpID)).unwrap();
+    let mp = (await modpackCache.get(mpID)).unwrap(call);
     if(!mp) return;
 
     if(!mp.meta_og._perm?.users){
@@ -1110,7 +1163,7 @@ async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)
 
     let userAuth = mp.meta_og._perm.users.find(v=>v.uid == uid || v.uname == uname);
     if(!userAuth){
-        console.log("NO AUTH: ",uid,uname);
+        // console.log("NO AUTH: ",uid,uname);
         if(call) call(errors.noAuthFound);
         return;
     }

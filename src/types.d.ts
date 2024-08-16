@@ -212,9 +212,24 @@ interface RPMeta{
     update:number;
     ownerUID:string;
     rpID:string;
+    lastUploaded:number;
+    whoLastUploaded:string|undefined;
     _perm:{
         users:RPUserAuth[];
     }
+}
+interface Arg_GetRPInfo{
+    mpID:string;
+    rpID:string;
+}
+interface Res_GetRPInfo{
+    isPublished:boolean;
+    canUpload:boolean;
+    data?:{
+        update:number;
+        lastUploaded:number;
+        whoLastUploaded:string;
+    };
 }
 
 interface Base_UserAuth{
@@ -277,6 +292,10 @@ interface Arg_UploadRP{
 interface Res_UploadRP{
     res:number;
     update:number;
+}
+interface Arg_FinishUploadRP{
+    mpID:string;
+    rpID:string;
 }
 interface Arg_UploadRPFile{
     path:string;

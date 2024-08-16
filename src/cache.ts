@@ -10,6 +10,10 @@ class ModpackCacheItem{
         if(!this.meta_og._resourcepacks) this.meta_og._resourcepacks = [];
         if(!this.meta_og._worlds) this.meta_og._worlds = [];
 
+        for(const rp of this.meta_og._resourcepacks){
+            if(rp.lastUploaded == undefined) rp.lastUploaded = 0; // do I need to save after this?
+        }
+
         let newMeta = {} as any;
         let ok = Object.keys(meta);
         for(const key of ok){
