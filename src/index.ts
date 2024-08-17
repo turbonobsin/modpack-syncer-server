@@ -248,6 +248,16 @@ io.on("connection",socket=>{
         rp.whoLastUploaded = user.uname;
         await res.mp.save();
 
+        // setTimeout(()=>{
+            io.except(socket.id).emit("updateSearch",{
+                mpID:arg.mpID,
+                id:"rp",
+                data:{
+                    rpID:arg.rpID
+                }
+            });
+        // },1500);
+
         return new Result({update:rp.update});
     });
 
