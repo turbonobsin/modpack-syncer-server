@@ -1,16 +1,26 @@
 import express from "express";
 import { createServer } from "http";
 import { Server, Socket } from "socket.io";
-import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_rm, util_utimes, util_warn, util_writeBinary, util_writeJSON } from "./util";
+import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_readText, util_rm, util_utimes, util_warn, util_writeBinary, util_writeJSON } from "./util";
 import { configFile, modpackCache, userCache } from "./cache";
 import { errors, Result } from "./errors";
 import path from "path";
 import formidable from "formidable";
 
+// import { parse } from "smol-toml";
+import toml from "toml";
+import { escape } from "querystring";
+
 const app = express();
 const server = createServer(app);
 const io = new Server(server,{
-    maxHttpBufferSize:3e8 // 300 MB
+    maxHttpBufferSize:3e8, // 300 MB
+    cors:{
+        origin:"*"
+        // origin: ["file://", "http://localhost:3000", "tauri://localhost"], // Adjust based on your setup
+        // methods: ["GET", "POST", "PATCH"],
+        // credentials: true
+    }
 });
 
 app.get("/",(req,res)=>{
@@ -65,7 +75,7 @@ io.on("connection",socket=>{
         call(new Result(cache.meta));
     });
 
-    onEv<Arg_SearchPacks,Res_SearchPacks>(socket,"searchPacks",async (arg)=>{        
+    onEv<Arg_SearchPacks,Res_SearchPacks>(socket,"searchPacks",async (arg)=>{
         let res = modpackCache.findLike(arg.query,arg.uid,arg.uname);
         
         return new Result({
@@ -110,6 +120,79 @@ io.on("connection",socket=>{
             state:w.state
         });
     });
+
+
+    ////////////// NEW V2 !!!
+
+    type V2_GetMods = {
+        mods:{
+            filename:string;
+            name:string;
+            side:"both"|"client"|"server"|"unknown";
+            url:string;
+            custom?:boolean;
+        }[];
+        random:any;
+    };
+    
+    onEv<{
+        id:string
+    },V2_GetMods>(socket,"v2_getMods",async (arg)=>{
+        let res = {
+            mods:[],
+            random:{}
+        } as V2_GetMods;
+
+        console.log("INPUT:",arg);
+
+        let rootPath = path.join("..","modpacks",arg.id);
+        if(!rootPath) return errors.unknown;
+
+        let _curMods = await util_readdirWithTypes(path.join(rootPath,"mods"));
+        let _curIndexes = await util_readdir(path.join(rootPath,"mods",".index"));
+        // for(const mod of _curMods){
+        //     if(!mod.isFile()) continue;
+        //     // currentMods.push(mod.name);
+            
+
+        let random = {
+            par:[]
+        } as any;
+        
+        // }
+        for(const index of _curIndexes){
+            // currentIndexes.push(index);
+            // console.log("READ: ",path.join(rootPath,"mods",".index"),index);
+            let text = await util_readText(path.join(rootPath,"mods",".index",index));
+            let par = toml.parse(text) as any;
+            // random.par.push(par);
+
+            res.mods.push({
+                filename:par.filename,
+                name:par.name,
+                side:par.side,
+                url:par.download.url
+            });
+        }
+        for(const mod of _curMods){
+            if(!mod.isFile()) continue;
+            if(!mod.name.endsWith(".jar")) continue;
+
+            if(res.mods.some(v=>v.filename == mod.name)) continue;
+
+            res.mods.push({
+                filename:mod.name,
+                name:mod.name,
+                side:"unknown",
+                url:`http://localhost:25565/mod?id=${escape(arg.id)}&name=${mod.name}`,
+                custom:true,
+            });
+        }
+        
+        return new Result(res);
+    });
+    
+    ///////////////
 
     // sync
     onEv<{id:string,update:number},boolean>(socket,"checkModUpdates",async (arg,call)=>{
@@ -1212,13 +1295,34 @@ app.get("/image",(req,res)=>{
 });
 app.use("/test",express.static("../test_images"));
 
-app.get("/mod",(req,res)=>{
+app.get("/mod",async (req,res)=>{
     let packID = req.query.id;
     let name = req.query.name;
 
+    console.log("test",packID,name);
+    
     if(!packID || !name || typeof packID != "string" || typeof name != "string"){
         res.sendStatus(400); // bad request
         return;
+    }
+
+    if(packID?.includes("..")) return;
+
+    let pack = (await modpackCache.get(packID)).unwrap();
+    if(pack){
+        let index = pack.indexes.get(name); // get index by the requested file's name
+        // console.log("-- (new) using slug",name);
+        if(index){
+            let url = index.download.url as string;
+            // util_warn("download url..." + url + ` - (${!!url})`);
+            if(!!url){
+                res.redirect(url);
+                return;
+            }
+        }
+        else{
+            // console.warn("--- couldn't find this file's index file!!!",packID,name);
+        }
     }
     
     res.sendFile(path.join(__dirname,"..","modpacks",packID,"mods",name));

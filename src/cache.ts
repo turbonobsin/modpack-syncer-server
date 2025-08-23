@@ -1,6 +1,34 @@
 import path from "path";
 import { errors, Result } from "./errors";
-import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readJSON, util_warn, util_writeJSON } from "./util";
+import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readJSON, util_readText, util_warn, util_writeJSON } from "./util";
+import toml from "toml";
+
+interface ModrinthUpdate{
+    "mod-id":string;
+    version:string;
+}
+interface CurseForgeUpdate{
+    "file-id":number;
+    "project-id":number;
+}
+interface ModIndex{
+    name:string;
+    filename:string;
+    side:string;
+
+    download:{
+        mode:string;
+        url:string;
+        "hash-format":string;
+        hash:string;
+    }
+
+    update:{
+        modrinth:ModrinthUpdate;
+        curseforge:CurseForgeUpdate;
+    }
+
+}
 
 class ModpackCacheItem{
     constructor(id:string,meta:PackMetaData){
@@ -27,6 +55,10 @@ class ModpackCacheItem{
     id:string;
     meta_og:PackMetaData;
     meta:PackMetaData;
+
+    // filename to item
+    slugMap = new Map<string,string>();
+    indexes = new Map<string,ModIndex>();
 
     private _dirty:boolean;
     isDirty(){
@@ -101,6 +133,24 @@ class ModpackCache{
 
         // console.log(".. fetched pack from HD");
         let cacheItem = modpackCache.add(id,meta);
+
+        // load index cache
+        let indexPath = path.join("..","modpacks",id,"mods",".index");
+        let indexes = await util_readdir(indexPath);
+        console.log("--- cache mod indexes for",id);
+        for(const indexName of indexes){
+            let filestr = await util_readText(path.join(indexPath,indexName));
+            if(filestr){
+                let t = toml.parse(filestr) as ModIndex;
+                if(t){
+                    cacheItem.indexes.set(t.filename,t);
+                    cacheItem.slugMap.set(t.filename,indexName.replace(".pw.toml",""));
+                    console.log("\t-> cached: ",t.filename,indexName);
+                }
+                else console.warn("didn't find for:",indexName);
+            }
+            else console.warn("didn't find for:",indexName);
+        }
 
         return new Result(cacheItem);
     }
