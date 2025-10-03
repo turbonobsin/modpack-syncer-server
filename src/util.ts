@@ -1,5 +1,7 @@
 import fs from "fs";
 
+export type Uint8Buf = Uint8Array<ArrayBuffer>;
+
 // standard file ops
 export function util_readdir(path:fs.PathLike){
     return new Promise<string[]>(resolve=>{
@@ -60,7 +62,7 @@ export function util_writeJSON(path:fs.PathOrFileDescriptor,data:any){
         });
     });
 }
-export function util_writeBinary(path:fs.PathOrFileDescriptor,data:Buffer){
+export function util_writeBinary(path:fs.PathOrFileDescriptor,data:Uint8Buf){
     return new Promise<boolean>(resolve=>{
         fs.writeFile(path,data,(err)=>{
             if(err){

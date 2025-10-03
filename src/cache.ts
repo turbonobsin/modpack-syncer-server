@@ -1,7 +1,8 @@
 import path from "path";
 import { errors, Result } from "./errors";
-import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readJSON, util_readText, util_warn, util_writeJSON } from "./util";
+import { Uint8Buf, util_lstat, util_mkdir, util_readBinary, util_readdir, util_readJSON, util_readText, util_warn, util_writeJSON } from "./util";
 import toml from "toml";
+import { Arg_Connection, ConfigFile, PackMetaData } from "./types";
 
 interface ModrinthUpdate{
     "mod-id":string;
@@ -122,8 +123,8 @@ class ModpackCache{
         let mmcPackFile = await util_readBinary(path.join(loc,"mmc-pack.json"));
         let instanceCfg = await util_readBinary(path.join(loc,"instance.cfg"));
 
-        if(mmcPackFile) meta.mmcPackFile = mmcPackFile;
-        if(instanceCfg) meta.instanceCfgFile = instanceCfg;
+        if(mmcPackFile) meta.mmcPackFile = mmcPackFile as Uint8Buf;
+        if(instanceCfg) meta.instanceCfgFile = instanceCfg as Uint8Buf;
 
         // 
         let cacheLoc = path.join("..","modpacks",id,"cache");

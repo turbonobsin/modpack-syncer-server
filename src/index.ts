@@ -1,15 +1,16 @@
 import express from "express";
+import formidable from "formidable";
 import { createServer } from "http";
+import path from "path";
 import { Server, Socket } from "socket.io";
-import { util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_readText, util_rm, util_utimes, util_warn, util_writeBinary, util_writeJSON } from "./util";
 import { configFile, modpackCache, userCache } from "./cache";
 import { errors, Result } from "./errors";
-import path from "path";
-import formidable from "formidable";
+import { Uint8Buf, util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_readText, util_rm, util_warn, util_writeBinary, util_writeJSON } from "./util";
 
 // import { parse } from "smol-toml";
-import toml from "toml";
 import { escape } from "querystring";
+import toml from "toml";
+import { Arg_Connection, Arg_DownloadRP, Arg_DownloadRPFile, Arg_DownloadWorldFile, Arg_FinishUploadRP, Arg_FinishUploadWorld, Arg_GetAllowedDirs, Arg_GetModUpdates, Arg_GetRPInfo, Arg_GetRPs, Arg_GetRPVersions, Arg_GetWorldFiles, Arg_GetWorldMeta, Arg_LaunchInst, Arg_PublishModpack, Arg_SearchPacks, Arg_SetWorldState, Arg_TakeWorldOwnership, Arg_UnpublishRP, Arg_UnpublishWorld, Arg_UploadModpack, Arg_UploadModpackFile, Arg_UploadRP, Arg_UploadRPFile, Arg_UploadWorldFile, ModifiedFile, ModifiedFileData, PackMetaData, Res_DownloadRP, Res_FinishUploadWorld, Res_GetModUpdates, Res_GetRPInfo, Res_GetRPs, Res_GetRPVersions, Res_GetServerWorlds, Res_GetWorldFiles, Res_GetWorldMeta, Res_SearchPacks, Res_SearchPacksMeta, Res_UploadModpack, Res_UploadRP, RP_MCMeta, SArg_GetServerWorlds, SArg_PublishWorld, SWorldMeta, WorldMeta } from "./types";
 
 const app = express();
 const server = createServer(app);
@@ -100,7 +101,7 @@ io.on("connection",socket=>{
         let cache = cacheRes.unwrap(call);
         if(!cache) return errors.couldNotFindPack;
 
-        let w = cache.meta_og._worlds.find(v=>v.wID == arg.wID);
+        let w = cache.meta_og._worlds.find((v: { wID: string; })=>v.wID == arg.wID);
         if(!w) return new Result({
             isPublished:false,
             wID:arg.wID,
@@ -372,7 +373,8 @@ io.on("connection",socket=>{
         let res = await util_mkdir(path.dirname(loc),true);
         if(!res) return new Result(false);
         
-        res = await util_writeBinary(loc,Buffer.from(arg.buf));
+        // res = await util_writeBinary(loc,Buffer.from(arg.buf));
+        res = await util_writeBinary(loc,arg.buf);
         // let stat = await util_lstat(loc);
         // if(stat) console.log("STAT: ",arg.path,new Date(stat.mtimeMs),new Date(stat.birthtimeMs),new Date(arg.mt),new Date(arg.bt));
         // let utimes_res = await util_utimes(loc,{ atime:arg.at, mtime:arg.mt, btime:arg.bt });
@@ -437,7 +439,7 @@ io.on("connection",socket=>{
                     
                     // totalFiles++;
                     let buf = await util_readBinary(fileLoc);
-                    let file = new FFile(item.name,buf);
+                    let file = new FFile(item.name,buf as Uint8Buf);
                     f.items.push(file);
                     addFiles.push({
                         n:item.name,
@@ -681,7 +683,7 @@ io.on("connection",socket=>{
         let res = await util_mkdir(path.dirname(loc),true);
         if(!res) return new Result(false);
         
-        res = await util_writeBinary(loc,Buffer.from(arg.buf));
+        res = await util_writeBinary(loc,arg.buf as Uint8Buf);
         // let stat = await util_lstat(loc);
         // if(stat) console.log("STAT: ",arg.path,new Date(stat.mtimeMs),new Date(stat.birthtimeMs),new Date(arg.mt),new Date(arg.bt));
         // let utimes_res = await util_utimes(loc,{ atime:arg.at, mtime:arg.mt, btime:arg.bt });
@@ -1137,10 +1139,10 @@ io.on("connection",socket=>{
         reses.push(await util_mkdir(path.join(loc,"saves"),true));
 
         if(arg.icon) reses.push(
-            await util_writeBinary(path.join(loc,"icon.png"),Buffer.from(arg.icon))
+            await util_writeBinary(path.join(loc,"icon.png"),arg.icon as Uint8Buf)
         );
         if(arg.mmcPackFile) reses.push(
-            await util_writeBinary(path.join(loc,"mmc-pack.json"),Buffer.from(arg.mmcPackFile))
+            await util_writeBinary(path.join(loc,"mmc-pack.json"),arg.mmcPackFile as Uint8Buf)
         );
 
         let newMeta:PackMetaData = {} as any;
@@ -1215,7 +1217,7 @@ io.on("connection",socket=>{
         if(!await util_lstat(mpLoc)) return new Result(0);
         
         let loc = path.join(mpLoc,"mods",arg.sloc);
-        let res = await util_writeBinary(loc,Buffer.from(arg.buf));
+        let res = await util_writeBinary(loc,arg.buf as Uint8Buf);
         return new Result(res ? 2 : 0);
     });
     onEv<string,boolean>(socket,"unpublishModpack",async (mpID,call)=>{
@@ -1235,6 +1237,14 @@ io.on("connection",socket=>{
         }
 
         return new Result(res);
+    });
+
+    // V2
+    onEv<any,any>(socket,"get-modpack",async (arg,call)=>{
+        let mp = (await modpackCache.get(arg.mpId)).unwrap(call);
+        console.log("got mp",mp);
+        
+        return new Result(mp);
     });
 
     // 

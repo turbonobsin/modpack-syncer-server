@@ -1,3 +1,5 @@
+import { Uint8Buf } from "./util";
+
 interface PackMetaData{
     id:string;
     name:string;
@@ -299,7 +301,7 @@ interface Arg_FinishUploadRP{
 }
 interface Arg_UploadRPFile{
     path:string;
-    buf:Uint8Array;
+    buf:Uint8Buf;
     mpID:string;
     rpName:string;
 
