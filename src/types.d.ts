@@ -392,3 +392,65 @@ interface Res_GetRPVersions{
         update:number;
     }[];
 }
+
+////// V2
+
+type Loader = "fabric" | "forge" | "quilt" | "neoforge";
+type JavaCodeName = "delta" | "beta" | "gamma";
+type V2_UserInfo = {
+    name:string;
+    uid:string;
+};
+type V2_ModpackMeta = {
+    id:string;
+    name:string;
+    desc:string;
+    packVersion:number; // this modpack's version
+
+    owner:V2_UserInfo;
+    
+    game:{
+        loader:Loader;
+        version:string;
+        javaCodeName:JavaCodeName;
+    };
+};
+
+type V2_Mod = {
+    // important properties
+    name:string; // name of the mod
+    filename:string; // filename of the mod from the mods folder
+    url:string; // url to download the mod
+    optional?:boolean; // whether it's optional and not required to run the pack
+    optionalDefault?:boolean; // if it's optional, should it be checked automatically or not
+
+    // all the properties from the file
+    index:ModIndex;
+};
+
+type V2_Modpack = {
+    meta:V2_ModpackMeta;
+    mods:V2_Mod[];
+
+    // debug
+    autoGenMods?:boolean;
+};
+
+type ModIndex = {
+    filename:string;
+    name:string;
+    side:"both" | "client" | "server";
+    // some other x-prism launcher properties
+
+    download:{
+        hash:string;
+        "hash-format":string;
+        mode:string;
+        url:string;
+    }
+
+    "update.modrinth":{
+        "mod-id":string;
+        version:string;
+    }
+};

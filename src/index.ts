@@ -6,11 +6,12 @@ import { Server, Socket } from "socket.io";
 import { configFile, modpackCache, userCache } from "./cache";
 import { errors, Result } from "./errors";
 import { Uint8Buf, util_lstat, util_mkdir, util_readBinary, util_readdir, util_readdirWithTypes, util_readJSON, util_readText, util_rm, util_warn, util_writeBinary, util_writeJSON } from "./util";
+import * as fsp from "fs/promises";
 
 // import { parse } from "smol-toml";
 import { escape } from "querystring";
 import toml from "toml";
-import { Arg_Connection, Arg_DownloadRP, Arg_DownloadRPFile, Arg_DownloadWorldFile, Arg_FinishUploadRP, Arg_FinishUploadWorld, Arg_GetAllowedDirs, Arg_GetModUpdates, Arg_GetRPInfo, Arg_GetRPs, Arg_GetRPVersions, Arg_GetWorldFiles, Arg_GetWorldMeta, Arg_LaunchInst, Arg_PublishModpack, Arg_SearchPacks, Arg_SetWorldState, Arg_TakeWorldOwnership, Arg_UnpublishRP, Arg_UnpublishWorld, Arg_UploadModpack, Arg_UploadModpackFile, Arg_UploadRP, Arg_UploadRPFile, Arg_UploadWorldFile, ModifiedFile, ModifiedFileData, PackMetaData, Res_DownloadRP, Res_FinishUploadWorld, Res_GetModUpdates, Res_GetRPInfo, Res_GetRPs, Res_GetRPVersions, Res_GetServerWorlds, Res_GetWorldFiles, Res_GetWorldMeta, Res_SearchPacks, Res_SearchPacksMeta, Res_UploadModpack, Res_UploadRP, RP_MCMeta, SArg_GetServerWorlds, SArg_PublishWorld, SWorldMeta, WorldMeta } from "./types";
+import { Arg_Connection, Arg_DownloadRP, Arg_DownloadRPFile, Arg_DownloadWorldFile, Arg_FinishUploadRP, Arg_FinishUploadWorld, Arg_GetAllowedDirs, Arg_GetModUpdates, Arg_GetRPInfo, Arg_GetRPs, Arg_GetRPVersions, Arg_GetWorldFiles, Arg_GetWorldMeta, Arg_LaunchInst, Arg_PublishModpack, Arg_SearchPacks, Arg_SetWorldState, Arg_TakeWorldOwnership, Arg_UnpublishRP, Arg_UnpublishWorld, Arg_UploadModpack, Arg_UploadModpackFile, Arg_UploadRP, Arg_UploadRPFile, Arg_UploadWorldFile, ModifiedFile, ModifiedFileData, ModIndex, PackMetaData, Res_DownloadRP, Res_FinishUploadWorld, Res_GetModUpdates, Res_GetRPInfo, Res_GetRPs, Res_GetRPVersions, Res_GetServerWorlds, Res_GetWorldFiles, Res_GetWorldMeta, Res_SearchPacks, Res_SearchPacksMeta, Res_UploadModpack, Res_UploadRP, RP_MCMeta, SArg_GetServerWorlds, SArg_PublishWorld, SWorldMeta, V2_Modpack, V2_ModpackMeta, WorldMeta } from "./types";
 
 const app = express();
 const server = createServer(app);
@@ -62,6 +63,10 @@ io.on("connection",socket=>{
     socket.on("disconnect",()=>{
         userCache.disconnect(socket.id);
         // console.log("Disconnect: "+socket.id);
+    });
+
+    socket.on("test-message",(msg:string)=>{
+        console.log("test message:",msg);
     });
 
     // 
@@ -1240,9 +1245,81 @@ io.on("connection",socket=>{
     });
 
     // V2
-    onEv<any,any>(socket,"get-modpack",async (arg,call)=>{
-        let mp = (await modpackCache.get(arg.mpId)).unwrap(call);
-        console.log("got mp",mp);
+    onEv<{
+        mpId:string;
+    },V2_Modpack>(socket,"v2_getModpack",async (arg,call)=>{
+        console.log("trying to get modpack...",arg);
+        // let mp = (await modpackCache.get(arg.mpId)).unwrap(call);
+        // console.log("got mp",mp);
+
+        if(!call) return errors.unknown;
+
+        if(!arg.mpId || validatePath(arg.mpId)){
+            return errors.unknown;
+        }
+
+        let mp:V2_Modpack|undefined;
+        let loc = path.join("../modpacks",arg.mpId);
+
+        try{
+            mp = JSON.parse(await fsp.readFile(path.join(loc,"meta2.json"),"utf8"));
+            if(!mp) return errors.unknown;
+        }
+        catch(e){
+            console.log(`err: couldn't read ${arg.mpId}'s meta2 file`);
+            return errors.unknown;
+        }
+
+        let resave = false;
+
+
+        if(mp.autoGenMods){
+            resave = true;
+            mp.mods = [];
+
+            console.log("start auto gen mods...");
+            let res = {
+                success:0,
+                failed:0,
+            };
+
+            let modFiles = await fsp.readdir(path.join(loc,"mods"));
+            let modIndexFiles = await fsp.readdir(path.join(loc,"mods",".index"));
+            // for(const filename of modFiles){
+            for(const indexFilename of modIndexFiles){
+                // if(!filename.endsWith(".jar") && !filename.endsWith(".zip")) continue;
+
+                let indexData:ModIndex;
+                try{
+                    indexData = toml.parse(await fsp.readFile(path.join(loc,"mods",".index",indexFilename),"utf8"));
+                }
+                catch(e){
+                    console.log(`failed to read ${indexFilename} mod's index file`,e);
+                    res.failed++;
+                    continue;
+                }
+
+                res.success++;
+
+                if(indexData.download.mode != "url"){
+                    console.warn(`WARN: mod ${indexData.filename} has a different download mode`,indexData.download);
+                }
+
+                mp.mods.push({
+                    filename:indexData.filename,
+                    name:indexData.name,
+                    url:indexData.download.url,
+                    index:indexData
+                });
+            }
+
+            console.log("finished auto gen mods with",res);
+        }
+
+        if(resave){
+            await fsp.writeFile(path.join(loc,"meta2.json"),JSON.stringify(mp),"utf8");
+            console.log("finished resave of meta2.json");
+        }
         
         return new Result(mp);
     });
@@ -1254,6 +1331,12 @@ io.on("connection",socket=>{
 });
 
 const port = 25565;
+
+const v2ModpackCache = new Map<string,V2_Modpack>();
+
+async function cacheV2Modpacks(){
+    
+}
 
 async function getUserAuth(mpID:string,uid:string,uname?:string,call?:(data:any)=>void){
     let mp = (await modpackCache.get(mpID)).unwrap(call);
@@ -1305,11 +1388,33 @@ app.get("/image",(req,res)=>{
 });
 app.use("/test",express.static("../test_images"));
 
+function validatePathName(packID:any){
+    return packID != undefined && (typeof packID == "string") && !packID.includes("..");
+}
+app.get("/v2/mod",async (req,res)=>{
+    let packID = req.query.id;
+    let name = req.query.name;
+
+    try{
+        if(!validatePathName(packID) || !validatePathName(name)){
+            res.sendStatus(400);
+            return;
+        }
+        // if(packID.includes("..") || name.includes("..")){
+        //     res.sendStatus(400);
+        //     return;
+        // }
+
+        res.sendFile(path.join(__dirname,"..","modpacks",packID as string,"mods",name));
+    }
+    catch(e){
+        res.sendStatus(500);
+    }});
 app.get("/mod",async (req,res)=>{
     let packID = req.query.id;
     let name = req.query.name;
 
-    console.log("test",packID,name);
+    console.log("get mod...",packID,name);
     
     if(!packID || !name || typeof packID != "string" || typeof name != "string"){
         res.sendStatus(400); // bad request
