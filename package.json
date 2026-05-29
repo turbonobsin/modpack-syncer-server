@@ -3,19 +3,25 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev2": "vite-node src/index.ts",
+    "dev": "cd out; node index.js"
   },
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@modsync/shared": "link:../modsync-shared",
+    "cors": "^2.8.6",
     "express": "^4.19.2",
     "formidable": "^3.5.1",
     "socket.io": "^4.7.5",
     "toml": "^3.0.0"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^4.17.21",
-    "@types/formidable": "^3.4.5"
+    "@types/formidable": "^3.4.5",
+    "vite-node": "^6.0.0"
   }
 }

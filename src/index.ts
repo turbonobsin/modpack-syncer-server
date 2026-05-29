@@ -12,6 +12,7 @@ import * as fsp from "fs/promises";
 import { escape } from "querystring";
 import toml from "toml";
 import { Arg_Connection, Arg_DownloadRP, Arg_DownloadRPFile, Arg_DownloadWorldFile, Arg_FinishUploadRP, Arg_FinishUploadWorld, Arg_GetAllowedDirs, Arg_GetModUpdates, Arg_GetRPInfo, Arg_GetRPs, Arg_GetRPVersions, Arg_GetWorldFiles, Arg_GetWorldMeta, Arg_LaunchInst, Arg_PublishModpack, Arg_SearchPacks, Arg_SetWorldState, Arg_TakeWorldOwnership, Arg_UnpublishRP, Arg_UnpublishWorld, Arg_UploadModpack, Arg_UploadModpackFile, Arg_UploadRP, Arg_UploadRPFile, Arg_UploadWorldFile, ModifiedFile, ModifiedFileData, ModIndex, PackMetaData, Res_DownloadRP, Res_FinishUploadWorld, Res_GetModUpdates, Res_GetRPInfo, Res_GetRPs, Res_GetRPVersions, Res_GetServerWorlds, Res_GetWorldFiles, Res_GetWorldMeta, Res_SearchPacks, Res_SearchPacksMeta, Res_UploadModpack, Res_UploadRP, RP_MCMeta, SArg_GetServerWorlds, SArg_PublishWorld, SWorldMeta, V2_Modpack, V2_ModpackMeta, WorldMeta } from "./types";
+import cors from "cors";
 
 const app = express();
 const server = createServer(app);
@@ -24,6 +25,10 @@ const io = new Server(server,{
         // credentials: true
     }
 });
+
+app.use(cors({
+    origin:"*"
+}));
 
 app.get("/",(req,res)=>{
     res.send("<h1>Hello World</h1>");
@@ -1405,7 +1410,7 @@ app.get("/v2/mod",async (req,res)=>{
         //     return;
         // }
 
-        res.sendFile(path.join(__dirname,"..","modpacks",packID as string,"mods",name));
+        res.sendFile(path.join(__dirname,"..","modpacks",packID as string,"mods",name as string));
     }
     catch(e){
         res.sendStatus(500);
@@ -1532,6 +1537,9 @@ app.post("/world/upload_full",async (req,res)=>{
 
     res.sendStatus(200);
 });
+
+import syncRouter from "./routes/sync";
+app.use(syncRouter);
 
 server.listen(port,()=>{
     console.log(`Server listening on port ${port}`);
